@@ -3,8 +3,9 @@
 #
 
 import logging
+import time
 
-from drivers.interface import InterfaceManager
+import smbus2
 
 from .register import *
 
@@ -14,12 +15,12 @@ def make_uint16(lsb, msb):
 
 
 class VL53L0X(object):
-    def __init__(self, address=VL53L0X_DEFAULT_ADDRESS, init=True):
+    def __init__(self, address=VL53L0X_DEFAULT_ADDRESS, bus=3, init=True):
         # i2c device address
         self.address = address
 
         # smbus object
-        self.bus = InterfaceManager.request_i2c_interface("VL53L0X", address)
+        self.bus = smbus2.SMBus(bus)
 
         # static sequence config
         self.static_seq_config = 0
@@ -179,10 +180,12 @@ class VL53L0X(object):
         self.measurement = range_millimeter
 
     def _write_byte(self, reg, data):
-        self.bus.write_reg_byte(data, reg)
+        self.bus.write_byte_data(self.address, reg, data)
 
     def _read_byte(self, reg):
-        return self.bus.read_reg_byte(reg)
+        read = self.bus.read_byte_data(self.address, reg)
+        return read
 
     def _read_block(self, reg):
-        return self.bus.read_reg_data(reg, 16)
+        read = self.bus.read_i2c_block_data(self.address, reg, 16)
+        return read

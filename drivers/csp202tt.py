@@ -23,6 +23,10 @@ class Target:
 
 
 class CSP202TT(object):
+    """
+    CSP202TT 3 target mmwave radar driver
+    """
+
     def __init__(self, start_listen=True) -> None:
         self._ser = InterfaceManager.request_uart_interface("CSP202TT", 256000)
         self.targets = [Target(0, 0, 0, 0)] * 3
@@ -76,7 +80,8 @@ class CSP202TT(object):
                     while True:
                         buf += self._ser.read(self._ser.in_waiting)
                         if len(buf) >= pack_size + tail_size:
-                            self._unpack_targets(buf[:pack_size])
+                            if buf[pack_size : pack_size + tail_size] == PACKAGE_TAIL:
+                                self._unpack_targets(buf[:pack_size])
                             buf = buf[pack_size + tail_size :]
                             break
                 else:

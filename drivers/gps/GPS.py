@@ -45,7 +45,7 @@ class GPS(object):
         # self._sio.write(command)
         # self._sio.flush()
 
-    def switch_baudrate(self, baudrate, save=True):
+    def switch_baudrate(self, baudrate: int, save=True):
         """
         Set the baudrate of the GPS module
         Available baudrates: 4800, 9600, 19200, 38400, 57600, 115200
@@ -58,9 +58,9 @@ class GPS(object):
             # We dont know the current baudrate, so we try all of them
             if baud == baudrate:
                 continue
-            self._ser.set_baudrate(baud)
+            self._ser.baudrate = baud
             self.send_command(command)
-        self._ser.set_baudrate(baudrate)
+        self._ser.baudrate = baudrate
         if save:
             self.save_parms()
         logger.info(f"Switched baudrate to {baudrate}")
@@ -153,10 +153,10 @@ class GPS(object):
                     inited = True
                     continue  # Skip first line
                 line = line.strip()
-                if line[:3] == "$BD":  # Beidou adopt to NEMA4.0
-                    checksum = int(line[-2:], 16)
-                    checksum ^= ord("G") ^ ord("D")  # Fix checksum
-                    line = "$GB" + line[3:-2] + f"{checksum:02X}"
+                # if line[:3] == "$BD":  # Beidou adopt to NEMA4.0
+                #     checksum = int(line[-2:], 16)
+                #     checksum ^= ord("G") ^ ord("D")  # Fix checksum
+                #     line = "$GB" + line[3:-2] + f"{checksum:02X}"
                 pack: NMEAMessage = NMEAReader.parse(line)  # type: ignore
                 if not self._module_connected:
                     logger.info("GPS module connected")

@@ -5,7 +5,7 @@ from loguru import logger
 
 class I2CMessageTemplate:
     @staticmethod
-    def write(data: bytes) -> "I2CMessageTemplate":
+    def write(data: Union[bytes, List[int]]) -> "I2CMessageTemplate":
         """
         Write data to the I2C bus
         """
@@ -15,6 +15,20 @@ class I2CMessageTemplate:
     def read(length: int) -> "I2CMessageTemplate":
         """
         Read data from the I2C bus
+        """
+        raise NotImplementedError()
+
+    @staticmethod
+    def write_addr(addr: int, data: Union[bytes, List[int]]) -> "I2CMessageTemplate":
+        """
+        Write data to the I2C bus with specified address
+        """
+        raise NotImplementedError()
+
+    @staticmethod
+    def read_addr(addr: int, length: int) -> "I2CMessageTemplate":
+        """
+        Read data from the I2C bus with specified address
         """
         raise NotImplementedError()
 
@@ -44,9 +58,21 @@ class I2CMessageTemplate:
 
 
 class I2CInterfaceTemplate:
-    def set_address(self, address: int):
+    @property
+    def address(self) -> int:
         """
-        Set the address of the I2C device
+        Return the address of communication target
+
+        Note: 7-bit address, r/w bit will be added automatically
+        """
+        raise NotImplementedError()
+
+    @address.setter
+    def address(self, address: int):
+        """
+        Set the address of communication target
+
+        Note: 7-bit address, r/w bit will be added automatically
         """
         raise NotImplementedError()
 
@@ -62,25 +88,25 @@ class I2CInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def write_byte(self, register: int, value: int):
+    def write_reg_byte(self, register: int, value: int):
         """
         Write a byte to specified register
         """
         raise NotImplementedError()
 
-    def read_byte(self, register: int) -> int:
+    def read_reg_byte(self, register: int) -> int:
         """
         Read a byte from specified register
         """
         raise NotImplementedError()
 
-    def write_data(self, register: int, data: Union[bytes, List[int]]):
+    def write_reg_data(self, register: int, data: Union[bytes, List[int]]):
         """
         Write data to specified register
         """
         raise NotImplementedError()
 
-    def read_data(self, register: int, length: int) -> bytes:
+    def read_reg_data(self, register: int, length: int) -> bytes:
         """
         Read data from specified register
         """
@@ -92,7 +118,16 @@ class I2CInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def exchange_msg(self, msgs: list[I2CMessageTemplate]):
+    @property
+    def max_transfer_size(self) -> int:
+        """
+        Return the max transfer size of the I2C Driver
+
+        Note: size = reg byte + data bytes, not include address
+        """
+        return 4095
+
+    def transfer_msg(self, msgs: list[I2CMessageTemplate]):
         """
         Excute a series of I2C messages
         """
@@ -106,6 +141,34 @@ class I2CInterfaceTemplate:
 
 
 class SPIInterfaceTemplate:
+    @property
+    def speed_hz(self) -> float:
+        """
+        Return the speed of the SPI bus
+        """
+        raise NotImplementedError()
+
+    @property
+    def mode(self) -> int:
+        """
+        Return the mode of the SPI bus
+        """
+        raise NotImplementedError()
+
+    @speed_hz.setter
+    def speed_hz(self, speed_hz: float):
+        """
+        Set the speed of the SPI bus
+        """
+        raise NotImplementedError()
+
+    @mode.setter
+    def mode(self, mode: int):
+        """
+        Set the mode of the SPI bus
+        """
+        raise NotImplementedError()
+
     def write(self, data: bytes):
         """
         Write data to the SPI bus
@@ -124,18 +187,6 @@ class SPIInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def set_mode(self, mode: int):
-        """
-        Set the mode of the SPI bus
-        """
-        raise NotImplementedError()
-
-    def set_speed_hz(self, speed_hz: int):
-        """
-        Set the speed of the SPI bus
-        """
-        raise NotImplementedError()
-
     def close(self):
         """
         Close the SPI bus
@@ -148,17 +199,81 @@ class SPIInterfaceTemplate:
         """
         raise NotImplementedError()
 
+    def set_auto_cs(self, enable: bool, polarity: bool):
+        """
+        Set the auto chip select of the SPI bus
+
+        plority: True for active high, False for active low
+
+        Note: If this function raises NotImplementedError, \
+              user should fallback to using GPIO interface. \
+              For drivers, if the device can auto manage the \
+              CS pin, this function should be overrided with \
+              empty body.
+        """
+        raise NotImplementedError()
+
+    def set_cs(self, level: bool):
+        """
+        Set the chip select of the SPI bus
+        """
+        raise NotImplementedError()
+
 
 class UartInterfaceTemplate:
-    def set_baudrate(self, baudrate: int):
+    @property
+    def baudrate(self) -> int:
+        """
+        Return the baudrate of the UART bus
+        """
+        raise NotImplementedError()
+
+    @baudrate.setter
+    def baudrate(self, baudrate: int):
         """
         Set the baudrate of the UART bus
         """
         raise NotImplementedError()
 
-    def set_option(self, data_bits: int, parity: str, stop_bits: int):
+    @property
+    def data_bits(self) -> int:
         """
-        Set the option of the UART bus
+        Return the data bits of the UART bus
+        """
+        raise NotImplementedError()
+
+    @data_bits.setter
+    def data_bits(self, data_bits: int):
+        """
+        Set the data bits of the UART bus
+        """
+        raise NotImplementedError()
+
+    @property
+    def parity(self) -> str:
+        """
+        Return the parity of the UART bus
+        """
+        raise NotImplementedError()
+
+    @parity.setter
+    def parity(self, parity: str):
+        """
+        Set the parity of the UART bus
+        """
+        raise NotImplementedError()
+
+    @property
+    def stop_bits(self) -> int:
+        """
+        Return the stop bits of the UART bus
+        """
+        raise NotImplementedError()
+
+    @stop_bits.setter
+    def stop_bits(self, stop_bits: int):
+        """
+        Set the stop bits of the UART bus
         """
         raise NotImplementedError()
 
@@ -228,13 +343,12 @@ class GPIOInterfaceTemplate:
 
         Note: Not necessary for most cases, use if multiple \
               instances are using the same GPIO pins and you \
-              want to manage the pins share
-
-        Wont raise error even if driver does not support this
+              want to manage the pins share. Wont raise error \
+              even if driver does not support this
         """
         ...
 
-    def write(self, pin_name: str, value: bool):
+    def write(self, pin_name: str, level: bool):
         """
         Write digital value to the GPIO pin
         """
@@ -286,6 +400,23 @@ class GPIOInterfaceTemplate:
         """
         raise NotImplementedError()
 
+    def get_pin(self, pin_name: str):
+        """
+        Return a GPIO instance
+        """
+
+        class GPIOInstance:
+            def __init__(self, pin_name: str, interface: GPIOInterfaceTemplate) -> None:
+                self._name = pin_name
+                self._interface = interface
+
+            def __getattr__(self, name: str):
+                return lambda *args, **kwargs: getattr(self._interface, name)(
+                    self._name, *args, **kwargs
+                )
+
+        return GPIOInstance(pin_name, self)
+
 
 AvailableTemplates = Union[
     I2CInterfaceTemplate,
@@ -307,6 +438,7 @@ class InterfaceBuilderTemplate:
     def __init__(self, *args, **kwargs) -> None:
         """
         Initialize the interface builder
+
         Pass parameters that are globally shared
         """
         raise NotImplementedError()
@@ -314,6 +446,7 @@ class InterfaceBuilderTemplate:
     def build(self, *args, **kwargs) -> AvailableTemplates:
         """
         Build the interface
+
         Pass parameters that from module who requests the interface
         """
         raise NotImplementedError()
@@ -321,6 +454,7 @@ class InterfaceBuilderTemplate:
     def register(self, module_name: Union[None, str, List[str]] = None):
         """
         Register the interface to the interface manager
+
         module_name: offer name if this interface is specific to a module
         """
         assert self.dev_type is not None, "Invalid interface builder"

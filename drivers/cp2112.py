@@ -11,7 +11,7 @@ class I2CError(Exception):
 
 # Status 1 when Status 0 is 0x03
 ErrorStatus = {
-    0x00: "NACK received",
+    0x00: "NACK received (no device)",
     0x01: "Bus not free (SCL low)",
     0x02: "Arbitration lost",
     0x03: "Read incomplete",
@@ -207,7 +207,7 @@ class CP2112:
             raise IndexError()
         data = bytes([0x14, address << 1, len(tx_data)]) + bytes(tx_data)
         self.handle.write(data)
-        # self._wait_transfer_finish()
+        self._wait_transfer_finish()
 
     def read_i2c(self, address, rx_size) -> bytes:
         """Read from the I2C bus.
@@ -245,10 +245,10 @@ class CP2112:
             + bytes(tx_data)
         )
         count = self._wait_transfer_finish()
-        assert count == rx_size
+        assert count == rx_size, f"count={count}, rx_size={rx_size}"
         self.handle.write([0x12, rx_size])
         response = self._wait_response(0x13, rx_size + 3)
-        assert response[2] == rx_size
+        assert response[2] == rx_size, f"response[2]={response[2]}, rx_size={rx_size}"
         return bytes(response[3 : rx_size + 3])
 
     def check_i2c_device(self, address) -> bool:
@@ -259,7 +259,10 @@ class CP2112:
             True if the device is connected; False otherwise.
         """
         try:
-            self.write_i2c(address, b"\x00")
+            try:
+                self.write_i2c(address, b"\x00")
+            except I2CError:
+                pass
             self.read_i2c(address, 1)
             return True
         except I2CError:
@@ -271,7 +274,7 @@ class CP2112:
             A list of 7-bit addresses corresponding to the devices found.
         """
         addrs = [addr for addr in range(1, 128) if self.check_i2c_device(addr)]
-        logger.debug(f"CP2112 bus scan: {[hex(addr) for addr in addrs]}")
+        logger.debug(f"CP2112 bus scan result: {[hex(addr) for addr in addrs]}")
         return addrs
 
 

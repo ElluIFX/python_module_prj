@@ -2,11 +2,10 @@ import logging
 import math
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import numpy as np
 
-from .BMI160 import BMI160
+from .BMI160_i2c import Driver, definitions
 
 _acc_scale_divs = {
     3: 8192.0 * 2,  # 2G max
@@ -51,28 +50,8 @@ class KalmanFilter(object):
     state_estimate = np.array([[0], [0], [0], [0]], dtype=np.float64)
     theta_hat = 0.0
     phi_hat = 0.0
-    time: Optional[float] = None
+    time = None
     r_estimated = 0.0
-
-
-@dataclass()
-class Accel(object):
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-
-
-@dataclass()
-class Gyro(object):
-    x: float = 0.0
-    y: float = 0.0
-    z: float = 0.0
-
-
-@dataclass()
-class AccelGyro(object):
-    accel: Accel = Accel()
-    gyro: Gyro = Gyro()
 
 
 @dataclass
@@ -108,8 +87,8 @@ class DectectedResult(object):
 
 
 class IMU(object):
-    def __init__(self, addr=0x69):
-        self.sensor = BMI160(addr)
+    def __init__(self, addr=0x68, bus=3):
+        self.sensor = Driver(addr, bus)
         self.set_acc_range(5)
         self.set_gyr_range(3)
         self.motion6 = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # gx, gy, gz, ax, ay, az
@@ -199,10 +178,6 @@ class IMU(object):
         self.motion6[2] = gz / self._gyr_scale_div * math.pi / 180.0
         return tuple(self.motion6[0:3])
 
-    @property
-    def Gyro(self):
-        return Gyro(self.motion6[0], self.motion6[1], self.motion6[2])
-
     def get_acc(self):
         # m/s^2
         ax, ay, az = self.sensor.getAcceleration()
@@ -210,10 +185,6 @@ class IMU(object):
         self.motion6[4] = ay / self._acc_scale_div
         self.motion6[5] = az / self._acc_scale_div
         return tuple(self.motion6[3:6])
-
-    @property
-    def Accel(self):
-        return Accel(self.motion6[3], self.motion6[4], self.motion6[5])
 
     def get_all(self):
         # rad/s, m/s^2
@@ -225,13 +196,6 @@ class IMU(object):
         self.motion6[4] = ay / self._acc_scale_div
         self.motion6[5] = az / self._acc_scale_div
         return tuple(self.motion6)
-
-    @property
-    def AccelGyro(self):
-        return AccelGyro(
-            Accel(self.motion6[3], self.motion6[4], self.motion6[5]),
-            Gyro(self.motion6[0], self.motion6[1], self.motion6[2]),
-        )
 
     def get_temprature(self):
         return self.sensor.getTemperature()
@@ -295,9 +259,7 @@ class IMU(object):
         self.karman_yaw = 0.0
         self.karman_filter_k = filter_k
 
-    def kalman_estimate(
-        self, data: Optional[tuple] = None
-    ) -> tuple[float, float, float]:
+    def kalman_estimate(self, data: tuple = None):
         """
         Estimate the attitude using a Kalman filter.
         data: gx, gy, gz, ax, ay, az
@@ -458,7 +420,7 @@ class IMU(object):
             self._idle_detected = False
         self.sensor.setIntZeroMotionEnabled(enabled)
 
-    def update_idle_detection(self) -> int:
+    def update_idle_detection(self) -> bool:
         """
         Get idle detection count
         """
@@ -488,7 +450,7 @@ class IMU(object):
             self._freefall_detected = False
         self.sensor.setIntFreefallEnabled(enabled)
 
-    def update_freefall_detection(self) -> int:
+    def update_freefall_detection(self) -> bool:
         """
         Get freefall detection count
         """

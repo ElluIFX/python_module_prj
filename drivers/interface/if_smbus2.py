@@ -1,11 +1,15 @@
-from typing import List, Optional, Union
+from functools import partial
+from typing import TYPE_CHECKING, List, Optional, Union
 
 from smbus2 import SMBus, i2c_msg
 
 from .manager import I2CInterfaceTemplate, I2CMessageTemplate, InterfaceBuilderTemplate
 
 
-def build_msg(addr) -> type[I2CMessageTemplate]:
+def build_msg(addr) -> type["SMBus2_I2CMessage"]:
+    if TYPE_CHECKING:
+        global SMBus2_I2CMessage
+
     class SMBus2_I2CMessage(I2CMessageTemplate):
         _addr = addr
 
@@ -23,8 +27,8 @@ def build_msg(addr) -> type[I2CMessageTemplate]:
                 raise ValueError("Invalid message")
 
         @staticmethod
-        def write(data: bytes) -> "SMBus2_I2CMessage":
-            return SMBus2_I2CMessage(False, data)
+        def write(data: Union[bytes, List[int]]) -> "SMBus2_I2CMessage":
+            return SMBus2_I2CMessage(False, bytes(data))
 
         @staticmethod
         def read(length: int) -> "SMBus2_I2CMessage":
@@ -45,48 +49,69 @@ def build_msg(addr) -> type[I2CMessageTemplate]:
     return SMBus2_I2CMessage
 
 
-class SMBus2_I2CInterface(I2CInterfaceTemplate):
-    def __init__(self, bus: int, address: int):
+class _FakeSMBus:
+    def __init__(self, bus: SMBus) -> None:
         self._bus = bus
-        self._address = address
 
-    def set_address(self, address: int):
+    def __enter__(self) -> SMBus:
+        return self._bus
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class SMBus2_I2CInterface(I2CInterfaceTemplate):
+    def __init__(self, bus: int, address: int, keep_alive: bool = False):
+        self._address = address
+        if keep_alive:
+            self._bus_instance = SMBus(bus)
+            self._bus = partial(_FakeSMBus, self._bus_instance)
+        else:
+            self._bus = partial(SMBus, bus=bus)
+
+    @property
+    def address(self) -> int:
+        return self._address
+
+    @address.setter
+    def address(self, address: int):
         self._address = address
 
     def write_raw_byte(self, value: int):
-        with SMBus(self._bus) as bus:
+        with self._bus() as bus:
             bus.write_byte(self._address, value)
 
     def read_raw_byte(self) -> int:
-        with SMBus(self._bus) as bus:
+        with self._bus() as bus:
             return bus.read_byte(self._address)
 
-    def write_byte(self, register: int, value: int):
-        with SMBus(self._bus) as bus:
+    def write_reg_byte(self, register: int, value: int):
+        with self._bus() as bus:
             bus.write_byte_data(self._address, register, value)
 
-    def read_byte(self, register: int) -> int:
-        with SMBus(self._bus) as bus:
+    def read_reg_byte(self, register: int) -> int:
+        with self._bus() as bus:
             return bus.read_byte_data(self._address, register)
 
-    def write_data(self, register: int, data: Union[bytes, List[int]]):
-        with SMBus(self._bus) as bus:
+    def write_reg_data(self, register: int, data: Union[bytes, List[int]]):
+        with self._bus() as bus:
             bus.write_i2c_block_data(self._address, register, data)
 
-    def read_data(self, register: int, length: int) -> bytes:
-        with SMBus(self._bus) as bus:
+    def read_reg_data(self, register: int, length: int) -> bytes:
+        with self._bus() as bus:
             return bytes(bus.read_i2c_block_data(self._address, register, length))
 
-    def new_msg(self) -> type[I2CMessageTemplate]:
+    def new_msg(self) -> type["SMBus2_I2CMessage"]:
         return build_msg(self._address)
 
-    def exchange_msg(self, msgs: list[I2CMessageTemplate]):
-        with SMBus(self._bus) as bus:
-            bus.i2c_rdwr(msgs)  # type: ignore
+    def transfer_msg(self, msgs: list["SMBus2_I2CMessage"]):
+        smbus_msgs = [msg._msg for msg in msgs]
+        with self._bus() as bus:
+            bus.i2c_rdwr(*smbus_msgs)
 
     def check_address(self) -> bool:
         try:
-            with SMBus(self._bus) as bus:
+            with self._bus() as bus:
                 bus.write_quick(self._address)
             return True
         except IOError:
@@ -94,8 +119,9 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
 
 
 class SMBus2_I2CInterfaceBuilder(InterfaceBuilderTemplate):
-    def __init__(self, bus: int):
+    def __init__(self, bus: int, keep_alive: bool = False):
         self._bus = bus
+        self._keep_alive = keep_alive
         self.dev_type = "i2c"
 
     def build(self, address: int) -> SMBus2_I2CInterface:

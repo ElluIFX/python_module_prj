@@ -1,26 +1,39 @@
 import time
+from typing import Iterable
 
-from .interface import InterfaceManager
+from smbus2 import SMBus
 
 
 class MCP4725:
-    """
-    MCP4725 12bit DAC driver
-    """
-
-    def __init__(self, address=0x60, vref=3.3):
-        self._bus = InterfaceManager.request_i2c_interface("MCP4725", address)
+    def __init__(self, address=0x60, bus=3, vref=3.3):
+        self._address = address
+        self._bus = bus
         while self.read_por():  # Wait for POR
             time.sleep(0.1)
         self._vref = vref
+        self._continuous_i2c = None
 
-    def write_raw_value(self, raw):
+    def write_fastmode(self, data, delay=0, ):
         """
-        Set the DAC output to the given 12bit raw value.
+        Set the DAC output to the given 12bit raw value list.
         """
-        data1 = (raw >> 8) & 0xFF
-        data2 = raw & 0xFF
-        self._bus.write_reg_byte(data1, data2)
+        if not issubclass(type(data), Iterable):
+            data = [data]
+        with SMBus(self._bus) as i2c_bus:
+            cnt = 0
+            for raw in data:
+                data1 = (raw >> 8) & 0xFF
+                data2 = raw & 0xFF
+                if cnt == 0:
+                    i2c_bus.write_byte_data(
+                        self._address,
+                        data1,
+                        data2,
+                    )
+                else:
+                    i2c_bus.write_byte(data1, data2)
+                if delay:
+                    time.sleep(delay)
 
     def write_legacy(self, data, powerdown=0, save_to_eeprom=False):
         """
@@ -34,13 +47,16 @@ class MCP4725:
             data1 = ((0x02 << 5) & 0xFF) | ((powerdown << 1) & 0xFF)
         data2 = (data >> 4) & 0xFF
         data3 = (data << 4) & 0xFF
-        self._bus.write_reg_data(data1, [data2, data3])
+        with SMBus(self._bus) as i2c_bus:
+            i2c_bus.write_i2c_block_data(self._address, data1, [data2, data3])
         if save_to_eeprom:
             while self.read_eeprom_busy():
                 time.sleep(0.1)
 
     def read_raw(self):
-        return self._bus.read_reg_data(0x00, 3)
+        with SMBus(self._bus) as i2c_bus:
+            data = i2c_bus.read_i2c_block_data(self._address, 0x00, 3)
+        return data
 
     def read_eeprom_busy(self):
         return self.read_raw()[0] & 0b10000000 == 0
@@ -71,27 +87,11 @@ class MCP4725:
             data = self.read_data()
         data1 = (powerdown << 4) & 0xFF | (data >> 8) & 0xFF
         data2 = data & 0xFF
-        self._bus.write_reg_byte(data1, data2)
+        with SMBus(self._bus) as i2c_bus:
+            i2c_bus.write_i2c_block_data(self._address, data1, [data2])
 
-    @property
-    def vref(self):
-        return self._vref
-
-    @vref.setter
-    def vref(self, vref):
+    def set_vref(self, vref):
         self._vref = vref
-
-    @property
-    def raw_value(self):
-        """
-        Read raw value in 0 - max_raw
-        value depends on resolution
-        """
-        return self.read_data()
-
-    @raw_value.setter
-    def raw_value(self, raw):
-        self.write_raw_value(raw)
 
     @property
     def voltage(self):
@@ -103,11 +103,7 @@ class MCP4725:
     @voltage.setter
     def voltage(self, voltage):
         voltage = max(0, min(voltage, self._vref))
-        self.write_raw_value(int(voltage / self._vref * 0xFFF))
-
-    @property
-    def max_raw(self):
-        return 0xFFF
+        self.write_fastmode(int(voltage / self._vref * 0xFFF))
 
     @property
     def normalized(self):
@@ -119,7 +115,14 @@ class MCP4725:
     @normalized.setter
     def normalized(self, value):
         value = max(0, min(value, 1.0))
-        self.write_raw_value(int(value * 0xFFF))
+        self.write_fastmode(int(value * 0xFFF))
+
+    def write_voltages(self, voltages, delay=0):
+        """
+        Set the DAC output to the given voltage list.
+        """
+        lst = [int(v / self._vref * 0xFFF) for v in voltages]
+        self.write_fastmode(lst, delay)
 
     def write_voltage_to_eeprom(self, voltage):
         """
@@ -129,19 +132,9 @@ class MCP4725:
         self.write_legacy(int(voltage / self._vref * 0xFFF), save_to_eeprom=True)
 
     def global_reset(self):
-        """
-        Reset all devices on the bus
-        """
-        addr = self._bus.address
-        self._bus.address = 0x00
-        self._bus.write_raw_byte(0x06)
-        self._bus.address = addr
+        with SMBus(self._bus) as i2c_bus:
+            i2c_bus.write_byte(0x00, 0x06)
 
     def global_wakeup(self):
-        """
-        Wake up all devices on the bus
-        """
-        addr = self._bus.address
-        self._bus.address = 0x00
-        self._bus.write_raw_byte(0x09)
-        self._bus.address = addr
+        with SMBus(self._bus) as i2c_bus:
+            i2c_bus.write_byte(0x00, 0x09)

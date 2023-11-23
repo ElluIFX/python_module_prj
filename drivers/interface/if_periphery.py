@@ -1,3 +1,4 @@
+from functools import partial
 from typing import List, Optional, Union
 
 from periphery import I2C, SPI, I2CError, Serial
@@ -26,8 +27,8 @@ class Periphery_I2CMessage(I2CMessageTemplate):
             raise ValueError("Invalid message")
 
     @staticmethod
-    def write(data: bytes) -> "Periphery_I2CMessage":
-        return Periphery_I2CMessage(False, data)
+    def write(data: Union[bytes, List[int]]) -> "Periphery_I2CMessage":
+        return Periphery_I2CMessage(False, bytes(data))
 
     @staticmethod
     def read(length: int) -> "Periphery_I2CMessage":
@@ -47,74 +48,126 @@ class Periphery_I2CMessage(I2CMessageTemplate):
         return iter(bytes(self))
 
 
-class Periphery_I2CInterface(I2CInterfaceTemplate):
-    def __init__(self, devpath: str, addr: int) -> None:
-        self._i2c = I2C(devpath)
-        self._addr = addr
+class _FakeI2C:
+    def __init__(self, bus: I2C) -> None:
+        self._bus = bus
 
-    def set_address(self, address: int) -> None:
+    def __enter__(self) -> I2C:
+        return self._bus
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+
+
+class Periphery_I2CInterface(I2CInterfaceTemplate):
+    def __init__(self, devpath: str, addr: int, keep_alive: bool = False) -> None:
+        self._addr = addr
+        if keep_alive:
+            self._i2c_instance = I2C(devpath)
+            self._i2c = partial(_FakeI2C, self._i2c_instance)
+        else:
+            self._i2c = partial(I2C, devpath=devpath)
+
+    @property
+    def address(self) -> int:
+        return self._addr
+
+    @address.setter
+    def address(self, address: int) -> None:
         self._addr = address
 
     def write_raw_byte(self, value: int) -> None:
-        self._i2c.transfer(self._addr, [I2C.Message([value])])
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [I2C.Message([value])])
 
     def read_raw_byte(self) -> int:
         msg = I2C.Message([0], read=True)
-        self._i2c.transfer(self._addr, [msg])
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [msg])
         return int(msg.data[0])
 
-    def write_byte(self, register: int, value: int) -> None:
-        self._i2c.transfer(self._addr, [I2C.Message([register, value & 0xFF])])
+    def write_reg_byte(self, register: int, value: int) -> None:
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [I2C.Message([register, value & 0xFF])])
 
-    def read_byte(self, register: int) -> int:
+    def read_reg_byte(self, register: int) -> int:
         msg = I2C.Message([0], read=True)
-        self._i2c.transfer(self._addr, [I2C.Message([register]), msg])
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [I2C.Message([register]), msg])
         return int(msg.data[0])
 
-    def write_data(self, register: int, data: Union[bytes, List[int]]) -> None:
-        self._i2c.transfer(self._addr, [I2C.Message([register] + list(data))])
+    def write_reg_data(self, register: int, data: Union[bytes, List[int]]) -> None:
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [I2C.Message([register] + list(data))])
 
-    def read_data(self, register: int, length: int) -> bytes:
+    def read_reg_data(self, register: int, length: int) -> bytes:
         msg = I2C.Message(bytes(length), read=True)
-        self._i2c.transfer(self._addr, [I2C.Message([register]), msg])
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [I2C.Message([register]), msg])
         return bytes(msg.data)
 
     def new_msg(self) -> type[Periphery_I2CMessage]:
         return Periphery_I2CMessage
 
-    def exchange_msg(self, msgs: list[Periphery_I2CMessage]) -> None:
-        self._i2c.transfer(self._addr, [msg._msg for msg in msgs])
+    def transfer_msg(self, msgs: list[Periphery_I2CMessage]) -> None:
+        with self._i2c() as i2c:
+            i2c.transfer(self._addr, [msg._msg for msg in msgs])
 
     def check_address(self) -> bool:
         try:
-            self._i2c.transfer(self._addr, [I2C.Message([0])])
+            with self._i2c() as i2c:
+                i2c.transfer(self._addr, [I2C.Message([0])])
             return True
         except I2CError:
             return False
 
 
 class Periphery_I2CInterfaceBuilder(InterfaceBuilderTemplate):
-    def __init__(self, devpath: str) -> None:
+    def __init__(self, devpath: str, keep_alive: bool = False) -> None:
         self._devpath = devpath
+        self._keep_alive = keep_alive
         self.dev_type = "i2c"
 
     def build(self, address: int) -> Periphery_I2CInterface:
-        return Periphery_I2CInterface(self._devpath, address)
+        return Periphery_I2CInterface(self._devpath, address, self._keep_alive)
 
 
 class Periphery_UartInterface(UartInterfaceTemplate):
     def __init__(self, devpath: str, baudrate: int) -> None:
         self._uart = Serial(devpath, baudrate=baudrate)
         self._devpath = devpath
-        self._baudrate = baudrate
 
-    def set_baudrate(self, baudrate: int):
+    @property
+    def baudrate(self) -> int:
+        return self._uart.baudrate
+
+    @baudrate.setter
+    def baudrate(self, baudrate: int) -> None:
         self._uart.baudrate = baudrate
 
-    def set_option(self, data_bits: int, parity: str, stop_bits: int):
+    @property
+    def data_bits(self) -> int:
+        return self._uart.databits
+
+    @data_bits.setter
+    def data_bits(self, data_bits: int) -> None:
         self._uart.databits = data_bits
-        self._uart.parity = parity
+
+    @property
+    def stop_bits(self) -> int:
+        return self._uart.stopbits
+
+    @stop_bits.setter
+    def stop_bits(self, stop_bits: int) -> None:
         self._uart.stopbits = stop_bits
+
+    @property
+    def parity(self) -> str:
+        return self._uart.parity
+
+    @parity.setter
+    def parity(self, parity: str) -> None:
+        self._uart.parity = parity
 
     def write(self, data: bytes) -> None:
         self._uart.write(data)
@@ -129,7 +182,17 @@ class Periphery_UartInterface(UartInterfaceTemplate):
         self._uart.close()
 
     def reopen(self):
-        self._uart = Serial(self._devpath, baudrate=self._baudrate)
+        baudrate = self._uart.baudrate
+        data_bits = self._uart.databits
+        stop_bits = self._uart.stopbits
+        parity = self._uart.parity
+        self._uart = Serial(
+            self._devpath,
+            baudrate=baudrate,
+            databits=data_bits,
+            stopbits=stop_bits,
+            parity=parity,
+        )
 
     @property
     def in_waiting(self) -> int:
@@ -149,16 +212,22 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
     def __init__(self, devpath: str, mode: int, speed_hz: int) -> None:
         self._spi = SPI(devpath, mode=mode, max_speed=speed_hz)
         self._devpath = devpath
-        self._mode = mode
-        self._max_speed = speed_hz
 
-    def set_mode(self, mode: int) -> None:
+    @property
+    def mode(self) -> int:
+        return self._spi.mode
+
+    @mode.setter
+    def mode(self, mode: int) -> None:
         self._spi.mode = mode
-        self._mode = mode
 
-    def set_speed_hz(self, speed_hz: int) -> None:
+    @property
+    def speed_hz(self) -> float:
+        return self._spi.max_speed
+
+    @speed_hz.setter
+    def speed_hz(self, speed_hz: int) -> None:
         self._spi.max_speed = speed_hz
-        self._max_speed = speed_hz
 
     def write(self, data: bytes) -> None:
         self._spi.transfer(data)
@@ -173,7 +242,12 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
         self._spi.close()
 
     def reopen(self) -> None:
-        self._spi = SPI(self._devpath, mode=self._mode, max_speed=self._max_speed)
+        mode = self._spi.mode
+        speed_hz = self._spi.max_speed
+        self._spi = SPI(self._devpath, mode=mode, max_speed=speed_hz)
+
+    def set_auto_cs(self, enable: bool, polarity: bool):
+        pass
 
 
 class Periphery_SPIInterfaceBuilder(InterfaceBuilderTemplate):

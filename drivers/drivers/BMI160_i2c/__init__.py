@@ -1,28 +1,25 @@
 # FROM https://github.com/serioeseGmbH/BMI160
 # based on https://github.com/arduino/ArduinoCore-arc32/blob/master/libraries/CurieIMU/src/BMI160.cpp
 
-import time
 from struct import unpack
 
-# from smbus2 import SMBus, i2c_msg
-# from drivers.cp2112 import SMBus, i2c_msg
-from drivers.interface import InterfaceManager
+from smbus2 import SMBus, i2c_msg
 
 from . import commands, definitions, registers
+from .sleep import sleep_ms, sleep_us
 
 
-def sleep_ms(duration):
-    return time.sleep(duration * 0.001)
+class Driver:
 
-
-class BMI160:
     # Power on and prepare for general usage.
     # This will activate the device and take it out of sleep mode (which must be done
     # after start-up). This function also sets both the accelerometer and the gyroscope
     # to default range settings, namely +/- 2g and +/- 250 degrees/sec.
-    def __init__(self, addr=0x69):
+    def __init__(self, addr=0x68, bus=3):
+        self.addr = addr
+
         # Initialize the i2c bus driver
-        self.bus = InterfaceManager.request_i2c_interface("BMI160", addr)
+        self.bus = SMBus(bus)
 
         # Issue a soft-reset to bring the device into a clean state
         self._reg_write(registers.CMD, commands.SOFT_RESET)
@@ -552,7 +549,7 @@ class BMI160:
             )
         ) << 8
         return self._sign_extend(offset, 10)
-
+    
     # Set offset compensation value for gyroscope X-axis data.
     # This is used for applying manual calibration constants if required.
     # For auto-calibration, @see autoCalibrateGyroOffset().
@@ -1537,7 +1534,8 @@ class BMI160:
     # @return Data frames from FIFO buffer
     def getFIFOBytes(self, *data, length):
         # TODO fix here
-        pass
+        if length:
+            data[0] = registers.FIFO_DATA
 
     # Get full set of interrupt status bits from INT_STATUS[0] register.
     # Interrupts are typically cleared automatically.
@@ -2209,20 +2207,25 @@ class BMI160:
     #                               I2C COMMUNICATION
     # ──────────────────────────────────────────────────────────────────────────────
     def _reg_write(self, reg, data):
-        # write = i2c_msg.write(self.addr, [reg, data])
-        # self.bus.i2c_rdwr(write)
-        self.bus.write_reg_byte(reg, data)
+        write = i2c_msg.write(self.addr, [reg, data])
+        self.bus.i2c_rdwr(write)
 
     def _reg_read(self, reg):
-        return self.bus.read_reg_byte(reg)
+        return self._regs_read(reg, 1)[0]
 
     def _regs_read(self, reg, n):
-        return list(self.bus.read_reg_data(reg, n))
-
+        write = i2c_msg.write(self.addr, [reg])
+        sleep_us(2)
+        read = i2c_msg.read(self.addr, n)
+        self.bus.i2c_rdwr(write, read)
+        result = list(read)
+        # print('< ', result)
+        return result
+    
     def _sign_extend(self, value, bits):
         """convert two's complement to signed int"""
         mask = 1 << (bits - 1)
         return -(value & mask) + (value & ~mask)
 
     def close(self):
-        pass
+        self.bus.close()

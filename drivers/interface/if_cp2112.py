@@ -14,6 +14,11 @@ _dev: Optional[CP2112] = None  # hid device should be opened only once
 _lock = Lock()
 
 
+def bus_scan():
+    assert _dev is not None
+    return _dev.bus_scan()
+
+
 class _FakeLock:
     def __enter__(self):
         pass
@@ -35,7 +40,7 @@ class CP2112_I2CMessage(I2CMessageTemplate):
 
     @staticmethod
     def write(data) -> "CP2112_I2CMessage":
-        return CP2112_I2CMessage(False, data)
+        return CP2112_I2CMessage(False, bytes(data))
 
     @staticmethod
     def read(length):
@@ -58,7 +63,13 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
     def __init__(self, addr: int) -> None:
         self._addr = addr
 
-    def set_address(self, address: int):
+    @property
+    def address(self) -> int:
+        return self._addr
+
+    @address.setter
+    def address(self, address: int):
+        assert address != 0x00, "Address 0x00 is not supported by CP2112"
         self._addr = address
 
     def write_raw_byte(self, value: int):
@@ -71,22 +82,26 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
         with _lock:
             return _dev.read_i2c(self._addr, 1)[0]
 
-    def write_byte(self, register: int, value: int):
+    def write_reg_byte(self, register: int, value: int):
         assert _dev is not None
         with _lock:
             _dev.write_i2c(self._addr, [register, value])
 
-    def read_byte(self, register: int) -> int:
+    def read_reg_byte(self, register: int) -> int:
         assert _dev is not None
         with _lock:
             return _dev.write_read_i2c(self._addr, [register], 1)[0]
 
-    def write_data(self, register: int, data: Union[bytes, List[int]]):
+    def write_reg_data(self, register: int, data: Union[bytes, List[int]]):
         assert _dev is not None
         with _lock:
             _dev.write_i2c(self._addr, bytes([register]) + bytes(data))
 
-    def read_data(self, register: int, length: int) -> bytes:
+    @property
+    def max_transfer_size(self) -> int:
+        return 60  # 61 - addr
+
+    def read_reg_data(self, register: int, length: int) -> bytes:
         assert _dev is not None
         with _lock:
             return bytes(_dev.write_read_i2c(self._addr, [register], length))
@@ -99,7 +114,7 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
         with _lock:
             return _dev.check_i2c_device(self._addr)
 
-    def exchange_msg(self, msgs: list[CP2112_I2CMessage]):
+    def transfer_msg(self, msgs: list[CP2112_I2CMessage]):
         assert _dev is not None
         with _lock:
             for msg in msgs:
@@ -140,7 +155,7 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def __init__(self, pinmap: Optional[Dict[str, AvailableGPIOs]]) -> None:
         self._pinmap = pinmap
 
-    def get_available_pins(self) -> List[Tuple[AvailableGPIOs, List[GPIOModes]]]:
+    def get_available_pins(self) -> List[Tuple[str, List[GPIOModes]]]:
         return [
             (
                 "Pin_0",

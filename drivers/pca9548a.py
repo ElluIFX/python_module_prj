@@ -6,6 +6,10 @@ from .interface import InterfaceManager
 
 
 class PCA9548A:
+    """
+    PCA9548A 8 channel I2C switch driver
+    """
+
     def __init__(self, Addr=0x70):
         # Initialize PCA9548A
         self._dev = InterfaceManager.request_i2c_interface("PCA9548A", Addr)
@@ -14,7 +18,7 @@ class PCA9548A:
 
     def _cmd_reset(self):
         # Send the command to reset
-        self._dev.write_byte(0x0, 0x0)
+        self._dev.write_reg_byte(0x0, 0x0)
         time.sleep(0.01)  # Wait 10 ms after reset
 
     def switch(self, channel, check=True):

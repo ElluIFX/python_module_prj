@@ -34,13 +34,37 @@ class Pyserial_UartInterface(UartInterfaceTemplate):
     def flush(self):
         self._ser.flush()
 
-    def set_baudrate(self, baudrate: int):
+    @property
+    def baudrate(self) -> int:
+        return self._ser.baudrate
+
+    @baudrate.setter
+    def baudrate(self, baudrate: int) -> None:
         self._ser.baudrate = baudrate
 
-    def set_option(self, data_bits: int, parity: str, stop_bits: int):
+    @property
+    def data_bits(self) -> int:
+        return self._ser.bytesize
+
+    @data_bits.setter
+    def data_bits(self, data_bits: int) -> None:
         self._ser.bytesize = data_bits
-        self._ser.parity = parity
+
+    @property
+    def stop_bits(self) -> int:
+        return int(self._ser.stopbits)
+
+    @stop_bits.setter
+    def stop_bits(self, stop_bits: int) -> None:
         self._ser.stopbits = stop_bits
+
+    @property
+    def parity(self) -> str:
+        return self._ser.parity
+
+    @parity.setter
+    def parity(self, parity: str) -> None:
+        self._ser.parity = parity
 
 
 class Pyserial_UartInterfaceBuilder(InterfaceBuilderTemplate):
