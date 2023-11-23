@@ -1,6 +1,6 @@
 from typing import List, Literal, Tuple
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 
 class MCP3421:
@@ -9,7 +9,7 @@ class MCP3421:
     """
 
     def __init__(self, address=0x68) -> None:
-        self._bus = InterfaceManager.request_i2c_interface("MCP3421", address)
+        self._bus = request_interface("i2c","MCP3421", address)
         self._calibration_factor = 1
         self._calibration_offset = 0
         self._set_configuration(1, 1, 3, 0)  # continuous conversion, 18bit, PGA=1x
@@ -96,9 +96,9 @@ class MCP3421:
         value depends on resolution
         """
         if self._smp == 3:
-            msg = self._bus.new_msg().read(3)
+            msg = self._bus.new_msg.read(3)
         else:
-            msg = self._bus.new_msg().read(2)
+            msg = self._bus.new_msg.read(2)
         self._bus.transfer_msg([msg])
         data = bytes(msg)
         msb = data[0] >> 7

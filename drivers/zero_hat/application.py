@@ -2,7 +2,6 @@ import time
 from typing import List
 
 from loguru import logger
-
 from zero_hat.protocal import ZHProtocolLayer
 from zero_hat.utils import hsv_to_rgb
 
@@ -63,7 +62,7 @@ class WS2812(object):
 
     @staticmethod
     def hsv_to_rgb(h: int, s: int, v: int) -> int:
-        return hsv_to_rgb(h, s, v, True)
+        return hsv_to_rgb(h, s, v, True)  # type: ignore
 
 
 class ZHAppLayer(ZHProtocolLayer):
@@ -95,4 +94,4 @@ class ZHAppLayer(ZHProtocolLayer):
         """
         设置HSV LED
         """
-        self.set_rgb_led(*hsv_to_rgb(h, s, v, False))
+        self.set_rgb_led(*hsv_to_rgb(h, s, v, False))  # type: ignore

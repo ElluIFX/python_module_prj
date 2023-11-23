@@ -5,12 +5,16 @@ from serial import Serial
 from .manager import InterfaceBuilderTemplate, UartInterfaceTemplate
 
 
-class Pyserial_UartInterface(UartInterfaceTemplate):
+class PySerial_UartInterface(UartInterfaceTemplate):
     def __init__(self, port: str, baudrate: int) -> None:
         self._ser = Serial(port, baudrate, timeout=0, write_timeout=0)
         self._port = port
         self._baudrate = baudrate
         self._timeout = 0
+        try:
+            self._ser.set_buffer_size(rx_size=1024 * 1024)  # 1MB
+        except Exception:
+            pass
 
     def write(self, data: bytes):
         self._ser.write(data)
@@ -67,10 +71,10 @@ class Pyserial_UartInterface(UartInterfaceTemplate):
         self._ser.parity = parity
 
 
-class Pyserial_UartInterfaceBuilder(InterfaceBuilderTemplate):
+class PySerial_UartInterfaceBuilder(InterfaceBuilderTemplate):
     def __init__(self, port: str) -> None:
         self._port = port
         self.dev_type = "uart"
 
-    def build(self, baudrate: int) -> Pyserial_UartInterface:
-        return Pyserial_UartInterface(self._port, baudrate)
+    def build(self, baudrate: int) -> PySerial_UartInterface:
+        return PySerial_UartInterface(self._port, baudrate)

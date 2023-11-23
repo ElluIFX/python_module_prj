@@ -1,6 +1,6 @@
 import time
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 
 class AHT21B:
@@ -9,7 +9,7 @@ class AHT21B:
     """
 
     def __init__(self) -> None:
-        self._bus = InterfaceManager().request_i2c_interface("AHT21B", 0x38)
+        self._bus = request_interface("i2c","AHT21B", 0x38)
         self._temperature = 0.0
         self._humidity = 0.0
         status = self._bus.read_reg_byte(0x71)
@@ -34,7 +34,7 @@ class AHT21B:
         Prepare data for reading
         Call this function after data is ready
         """
-        rd = self._bus.new_msg().read(6)  # crc byte is ignored
+        rd = self._bus.new_msg.read(6)  # crc byte is ignored
         self._bus.transfer_msg([rd])
         data = bytes(rd)
         raw_temperature = ((data[3] & 0x0F) << 16) | (data[4] << 8) | data[5]

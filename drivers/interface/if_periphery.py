@@ -62,6 +62,7 @@ class _FakeI2C:
 class Periphery_I2CInterface(I2CInterfaceTemplate):
     def __init__(self, devpath: str, addr: int, keep_alive: bool = False) -> None:
         self._addr = addr
+        self._keep_alive = keep_alive
         if keep_alive:
             self._i2c_instance = I2C(devpath)
             self._i2c = partial(_FakeI2C, self._i2c_instance)
@@ -106,6 +107,7 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
             i2c.transfer(self._addr, [I2C.Message([register]), msg])
         return bytes(msg.data)
 
+    @property
     def new_msg(self) -> type[Periphery_I2CMessage]:
         return Periphery_I2CMessage
 
@@ -120,6 +122,15 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
             return True
         except I2CError:
             return False
+
+    def close(self):
+        if self._keep_alive:
+            self._i2c_instance.close()
+
+    def reopen(self):
+        if self._keep_alive:
+            self._i2c_instance = I2C(self._i2c_instance.devpath)
+            self._i2c = partial(_FakeI2C, self._i2c_instance)
 
 
 class Periphery_I2CInterfaceBuilder(InterfaceBuilderTemplate):

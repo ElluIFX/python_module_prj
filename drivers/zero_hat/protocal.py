@@ -335,6 +335,7 @@ class ZHProtocolLayer(ZHBaseLayer):
         读取RTC时间
         """
         rawdata = self.send_raw_data(NODATA, 0x0D, request=True)
+        assert isinstance(rawdata, bytes), "RTC Read Error"
         y, m, d, h, mi, s, _ = struct.unpack("<BBBBBBB", rawdata)
         y = y + 2000
         return datetime.datetime(y, m, d, h, mi, s)

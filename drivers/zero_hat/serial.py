@@ -3,17 +3,18 @@ import time
 from queue import Queue
 from typing import Union
 
-import serial
 from loguru import logger
+
+from drivers.interface import UartInterfaceTemplate
 
 
 class SerialReader:
-    def __init__(self, serial_instance: serial.Serial, startBit):
+    def __init__(self, serial_instance: UartInterfaceTemplate, startBit):
         """
         初始化串口读取器。
 
         Args:
-            serial_instance (serial.Serial): 串口实例。
+            serial_instance (UartInterfaceTemplate): 串口实例。
             startBit (list): 读取起始位。
 
         Returns:
@@ -26,10 +27,6 @@ class SerialReader:
         self._pack_length = -1
         self._read_start_bit = bytes(startBit)
         self._read_start_bit_sum = sum(self._read_start_bit) & 0xFF
-        try:
-            self._ser.set_buffer_size(rx_size=1024 * 1024)  # 1MB
-        except Exception:
-            pass
 
     def read(self) -> bool:
         """
@@ -80,12 +77,12 @@ class SerialReaderBuffered:
     类似于SerialReader, 但在内部维护一个缓冲区, 以尝试提高读取效率。
     """
 
-    def __init__(self, serial_instance: serial.Serial, startBit):
+    def __init__(self, serial_instance: UartInterfaceTemplate, startBit):
         """
         初始化串口读取器。
 
         Args:
-            serial_instance (serial.Serial): 串口实例。
+            serial_instance (UartInterfaceTemplate): 串口实例。
             startBit (list): 读取起始位。
 
         Returns:
@@ -100,10 +97,6 @@ class SerialReaderBuffered:
         self._read_start_bit = bytes(startBit)
         self._read_start_bit_sum = sum(self._read_start_bit) & 0xFF
         self._read_start_bit_length = len(self._read_start_bit)
-        try:
-            self._ser.set_buffer_size(rx_size=1024 * 1024)  # 1MB
-        except Exception:
-            pass
 
     def read(self) -> bool:
         """
@@ -159,7 +152,7 @@ class SerialReaderThreaded:
     多线程的串口读取器
     """
 
-    def __init__(self, serial_instance: serial.Serial, startBit, buffered=True):
+    def __init__(self, serial_instance: UartInterfaceTemplate, startBit, buffered=True):
         """
         初始化串口读取器。
 

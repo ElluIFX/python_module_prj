@@ -5,7 +5,7 @@ from struct import unpack
 
 from loguru import logger
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 PACKAGE_HEAD = b"\xFE\x0A"
 PACKAGE_TAIL = b"\x55"
@@ -48,7 +48,7 @@ class LC319(object):
     """
 
     def __init__(self, start_listen=True) -> None:
-        self._ser = InterfaceManager.request_uart_interface("LC319", 115200)
+        self._ser = request_interface("uart","LC319", 115200)
         self.state = FlowState(0, 0, 0, 0, 0, 0, 0, False, 0)
         self.last_update_time = 0
         if start_listen:

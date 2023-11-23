@@ -1,7 +1,7 @@
 import time
 from struct import unpack
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 # BMP280 default address.
 BMP280_I2CADDR = 0x77
@@ -57,7 +57,7 @@ class BMP280(object):
             )
         self._mode = mode
         # Create I2C device.
-        self._bus = InterfaceManager.request_i2c_interface("BMP280", address)
+        self._bus = request_interface("i2c", "BMP280", address)
         # Load calibration values.
         self._load_calibration()
         self._tfine = 0

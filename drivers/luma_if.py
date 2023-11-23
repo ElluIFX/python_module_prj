@@ -1,4 +1,4 @@
-from .interface import InterfaceManager
+from .interface import request_interface
 
 
 class i2c(object):
@@ -11,7 +11,7 @@ class i2c(object):
         except ValueError:
             raise ValueError(f"I2C device address invalid: {address}")
 
-        self._bus = InterfaceManager().request_i2c_interface("luma.core", address)
+        self._bus = request_interface("i2c","luma.core", address)
         self._managed = True
 
     def command(self, *cmd):
@@ -28,7 +28,7 @@ class i2c(object):
             msgs = []
             while i < n:
                 msgs.append(
-                    self._bus.new_msg().write(
+                    self._bus.new_msg.write(
                         [self._data_mode] + list(data[i : i + block_size])
                     )
                 )

@@ -6,7 +6,7 @@ from struct import unpack
 
 from loguru import logger
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 PACKAGE_HEAD = b"\xAA\xFF\x03\x00"
 PACKAGE_TAIL = b"\x55\xCC"
@@ -28,7 +28,7 @@ class CSP202TT(object):
     """
 
     def __init__(self, start_listen=True) -> None:
-        self._ser = InterfaceManager.request_uart_interface("CSP202TT", 256000)
+        self._ser = request_interface("uart","CSP202TT", 256000)
         self.targets = [Target(0, 0, 0, 0)] * 3
         self.last_update_time = 0
         if start_listen:

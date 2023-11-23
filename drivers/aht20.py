@@ -1,6 +1,6 @@
 import time
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 
 class AHT20:
@@ -12,7 +12,7 @@ class AHT20:
 
     def __init__(self):
         # Initialize AHT20
-        self.dev = InterfaceManager.request_i2c_interface("AHT20", self._AHT20_I2CADDR)
+        self.dev = request_interface("i2c", "AHT20", self._AHT20_I2CADDR)
         self._cmd_soft_reset()
 
         # Check for calibration, if not done then do and wait 10 ms

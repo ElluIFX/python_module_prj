@@ -2,15 +2,14 @@ import os
 import threading
 import time
 from threading import Event
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Union
 
-import serial
 from loguru import logger
-from periphery import GPIO
-from serial.serialutil import SerialException
 from zero_hat.serial import SerialReaderBuffered, SerialReaderLike
 from zero_hat.smbus import I2C
 from zero_hat.utils import BaseEvent, BaseStruct, ByteVar
+
+from drivers.interface import InterfaceManager
 
 
 class ZHSettingStruct:
@@ -77,10 +76,9 @@ class ZHBaseLayer(object):
 
     def start_listen_i2c(
         self,
-        i2c_num: int = 3,
         addr: int = 0x42,
         print_state=False,
-        int_gpio: Optional[Tuple[int, int]] = (1, 3),
+        use_int: bool = False,
         callback: Optional[Callable[[ZHStateStruct], None]] = None,
     ):
         """通过I2C连接设备
@@ -95,25 +93,12 @@ class ZHBaseLayer(object):
         self._state_update_callback = callback
         self._print_state_flag = print_state
         self._i2c_mode = True
-        if int_gpio is not None:
-            try:
-                self._intp = GPIO(f"/dev/gpiochip{int_gpio[0]}", int_gpio[1], "in")
-            except IOError as e:
-                if e.errno == 13:
-                    _get_permission(f"/dev/gpiochip{int_gpio[0]}")
-                    self._intp = GPIO(f"/dev/gpiochip{int_gpio[0]}", int_gpio[1], "in")
-                else:
-                    raise e
+        if use_int:
+            self._intp = InterfaceManager.request_gpio_interface("Zero-Hat")
+            self._intp.set_mode("INT", "input_no_pull")
         else:
             self._intp = None
-        try:
-            self._i2c = I2C(i2c_num, addr)
-        except IOError as e:
-            if e.errno == 13:
-                _get_permission(f"/dev/i2c-{i2c_num}")
-                self._i2c = I2C(i2c_num, addr)
-            else:
-                raise e
+        self._i2c = I2C(addr)
         self.running = True
         self.send_raw_data(b"\x01", 0x00)  # 先发个包唤醒设备
         time.sleep(0.5)
@@ -124,7 +109,6 @@ class ZHBaseLayer(object):
 
     def start_listen_serial(
         self,
-        serial_dev: Optional[str] = "/dev/ttyAML1",
         baudrate: int = 921600,
         print_state=False,
         callback: Optional[Callable[[ZHStateStruct], None]] = None,
@@ -140,18 +124,7 @@ class ZHBaseLayer(object):
         assert not self.running, "ZH is already running"
         self._state_update_callback = callback
         self._print_state_flag = print_state
-        try:
-            self._ser = serial.Serial(
-                serial_dev, baudrate, timeout=0.5, write_timeout=0
-            )
-        except SerialException as e:
-            if e.errno == 13:
-                _get_permission(serial_dev)
-                self._ser = serial.Serial(
-                    serial_dev, baudrate, timeout=0.5, write_timeout=0
-                )
-            else:
-                raise e
+        self._ser = InterfaceManager.request_uart_interface("Zero-Hat", baudrate)
         self._reader = SerialReaderBuffered(self._ser, [0xAA, 0x55])
         self.running = True
         _listen_thread = threading.Thread(target=self._listen_serial_task)
@@ -294,7 +267,7 @@ class ZHBaseLayer(object):
         while self.running:
             try:
                 if self._intp is not None:
-                    while self._intp.read():
+                    while self._intp.read("INT"):
                         time.sleep(0.001)
                 for data in self._i2c.read():
                     if self._update_data(data):
@@ -333,17 +306,6 @@ class ZHBaseLayer(object):
                     self.connected = False
                     logger.warning("[ZH] Disconnected")
                 time.sleep(0.001)  # 降低CPU占用
-            except SerialException:
-                logger.warning("[ZH] Serialport is closed, try to reopen")
-                self.connected = False
-                self._ser.close()
-                while self.running:
-                    try:
-                        self._ser.open()
-                        logger.info("[ZH] Serialport reopened")
-                        break
-                    except SerialException:
-                        time.sleep(0.5)
             except Exception:
                 logger.exception("[ZH] Listen serial exception")
         logger.info("[ZH] Listen serial thread closed")

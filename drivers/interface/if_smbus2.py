@@ -61,8 +61,10 @@ class _FakeSMBus:
 
 
 class SMBus2_I2CInterface(I2CInterfaceTemplate):
-    def __init__(self, bus: int, address: int, keep_alive: bool = False):
+    def __init__(self, bus: Union[int, str], address: int, keep_alive: bool = False):
         self._address = address
+        self._keep_alive = keep_alive
+        self._bus_num = bus
         if keep_alive:
             self._bus_instance = SMBus(bus)
             self._bus = partial(_FakeSMBus, self._bus_instance)
@@ -101,6 +103,7 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
         with self._bus() as bus:
             return bytes(bus.read_i2c_block_data(self._address, register, length))
 
+    @property
     def new_msg(self) -> type["SMBus2_I2CMessage"]:
         return build_msg(self._address)
 
@@ -117,9 +120,18 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
         except IOError:
             return False
 
+    def close(self):
+        if self._keep_alive:
+            self._bus_instance.close()
+
+    def reopen(self):
+        if self._keep_alive:
+            self._bus_instance = SMBus(self._bus_num)
+            self._bus = partial(_FakeSMBus, self._bus_instance)
+
 
 class SMBus2_I2CInterfaceBuilder(InterfaceBuilderTemplate):
-    def __init__(self, bus: int, keep_alive: bool = False):
+    def __init__(self, bus: Union[int, str], keep_alive: bool = False):
         self._bus = bus
         self._keep_alive = keep_alive
         self.dev_type = "i2c"

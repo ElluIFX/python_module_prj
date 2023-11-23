@@ -1,6 +1,6 @@
 import time
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 MLX90614_RAWIR1 = 0x04
 MLX90614_RAWIR2 = 0x05
@@ -23,7 +23,7 @@ MLX90614_ID4 = 0x3F
 
 class MLX90614:
     def __init__(self, address=0x5A):
-        self._bus = InterfaceManager.request_i2c_interface("MLX90614", address)
+        self._bus = request_interface("i2c","MLX90614", address)
 
     def _read_word(self, reg):
         data = self._bus.read_reg_data(reg, 2)

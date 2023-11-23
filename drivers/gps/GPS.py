@@ -5,7 +5,7 @@ from typing import Dict
 from loguru import logger
 from pynmeagps import NMEAMessage, NMEAReader, exceptions
 
-from drivers.interface import InterfaceManager
+from drivers.interface import request_interface
 
 from .status import GGA_Status, RMC_Status, VTG_Status
 from .utils import ZKW_Commands, add_nema_checksum
@@ -25,7 +25,7 @@ class GPS(object):
 
     def __init__(self, baudrate=115200, start_listening=True):
         # self._serial = serial.Serial(port, baudrate, timeout=2)
-        self._ser = InterfaceManager.request_uart_interface("GPS", baudrate)
+        self._ser = request_interface("uart", "GPS", baudrate)
         # self._sio = io.TextIOWrapper(io.BufferedRWPair(self._serial, self._serial))
         # Giveup io.TextIOWrapper, it's too slow
         self._listen_thread = None

@@ -33,7 +33,7 @@ Implementation Notes
 import time
 from typing import Tuple, Union
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 # Register and command intants:
 _COMMAND_BIT = int(0x80)
@@ -96,7 +96,7 @@ class TCS34725:
     """
 
     def __init__(self, address: int = 0x29):
-        self._bus = InterfaceManager.request_i2c_interface("TCS34725", address)
+        self._bus = request_interface("i2c","TCS34725", address)
         self._active = False
         self.integration_time = 2.4
         self.glass_attenuation = 1.0

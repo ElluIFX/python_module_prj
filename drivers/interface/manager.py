@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 from loguru import logger
@@ -112,13 +113,14 @@ class I2CInterfaceTemplate:
         """
         raise NotImplementedError()
 
+    @property
     def new_msg(self) -> type[I2CMessageTemplate]:
         """
         Create a new I2C message
         """
         raise NotImplementedError()
 
-    @property
+    @cached_property
     def max_transfer_size(self) -> int:
         """
         Return the max transfer size of the I2C Driver
@@ -138,6 +140,18 @@ class I2CInterfaceTemplate:
         Check if the device is connected
         """
         raise NotImplementedError()
+
+    def close(self):
+        """
+        Close the I2C bus
+        """
+        ...
+
+    def reopen(self):
+        """
+        Reopen the I2C bus
+        """
+        ...
 
 
 class SPIInterfaceTemplate:
@@ -191,13 +205,13 @@ class SPIInterfaceTemplate:
         """
         Close the SPI bus
         """
-        raise NotImplementedError()
+        ...
 
     def reopen(self):
         """
         Reopen the SPI bus
         """
-        raise NotImplementedError()
+        ...
 
     def set_auto_cs(self, enable: bool, polarity: bool):
         """
@@ -299,13 +313,13 @@ class UartInterfaceTemplate:
         """
         Close the UART bus
         """
-        raise NotImplementedError()
+        ...
 
     def reopen(self):
         """
         Reopen the UART bus
         """
-        raise NotImplementedError()
+        ...
 
     @property
     def in_waiting(self) -> int:
@@ -416,6 +430,12 @@ class GPIOInterfaceTemplate:
                 )
 
         return GPIOInstance(pin_name, self)
+
+    def close(self):
+        """
+        Close the GPIO bus
+        """
+        ...
 
 
 AvailableTemplates = Union[
@@ -613,3 +633,16 @@ class InterfaceManager:
     @staticmethod
     def request_gpio_interface(module_name: str) -> GPIOInterfaceTemplate:
         return InterfaceManager._internal_get_dev("gpio", module_name)  # type: ignore
+
+
+__all__ = [
+    "I2CMessageTemplate",
+    "I2CInterfaceTemplate",
+    "SPIInterfaceTemplate",
+    "UartInterfaceTemplate",
+    "GPIOInterfaceTemplate",
+    "InterfaceBuilderTemplate",
+    "AvailableTemplates",
+    "AvailableDevTypes",
+    "InterfaceManager",
+]

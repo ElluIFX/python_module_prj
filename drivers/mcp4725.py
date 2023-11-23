@@ -1,6 +1,6 @@
 import time
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 
 class MCP4725:
@@ -9,7 +9,7 @@ class MCP4725:
     """
 
     def __init__(self, address=0x60, vref=3.3):
-        self._bus = InterfaceManager.request_i2c_interface("MCP4725", address)
+        self._bus = request_interface("i2c","MCP4725", address)
         while self.read_por():  # Wait for POR
             time.sleep(0.1)
         self._vref = vref

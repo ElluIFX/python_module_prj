@@ -2,7 +2,7 @@ import time
 
 from loguru import logger
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 
 class PCA9548A:
@@ -12,7 +12,7 @@ class PCA9548A:
 
     def __init__(self, Addr=0x70):
         # Initialize PCA9548A
-        self._dev = InterfaceManager.request_i2c_interface("PCA9548A", Addr)
+        self._dev = request_interface("i2c","PCA9548A", Addr)
         self._cmd_reset()
         logger.debug(f"PCA9548A: Initialized at address {Addr:02x}")
 

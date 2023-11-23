@@ -6,7 +6,7 @@ from struct import unpack
 
 # from smbus2 import SMBus, i2c_msg
 # from drivers.cp2112 import SMBus, i2c_msg
-from drivers.interface import InterfaceManager
+from drivers.interface import request_interface
 
 from . import commands, definitions, registers
 
@@ -22,7 +22,7 @@ class BMI160:
     # to default range settings, namely +/- 2g and +/- 250 degrees/sec.
     def __init__(self, addr=0x69):
         # Initialize the i2c bus driver
-        self.bus = InterfaceManager.request_i2c_interface("BMI160", addr)
+        self.bus = request_interface("i2c", "BMI160", addr)
 
         # Issue a soft-reset to bring the device into a clean state
         self._reg_write(registers.CMD, commands.SOFT_RESET)

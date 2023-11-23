@@ -3,9 +3,9 @@ import numpy as np
 from loguru import logger
 
 from drivers.csp202tt import CSP202TT
-from drivers.interface.if_pyserial import Pyserial_UartInterfaceBuilder
+from drivers.interface.if_pyserial import PySerial_UartInterfaceBuilder
 
-Pyserial_UartInterfaceBuilder("COM29").register()
+PySerial_UartInterfaceBuilder("COM29").register()
 
 
 radar = CSP202TT()

@@ -3,11 +3,11 @@ import time
 import numpy as np
 from scipy.optimize import curve_fit
 
-from drivers.interface.if_cp2112 import CP2112_I2CInterfaceBuilder
+from drivers.interface import register_interface
 from drivers.mcp3421 import MCP3421
 from drivers.mcp4725 import MCP4725
 
-CP2112_I2CInterfaceBuilder(clock=400000).register()
+register_interface("cp2112", "i2c", clock=400000)
 
 dac = MCP4725(vref=3.39409744)
 adc = MCP3421()

@@ -2,10 +2,10 @@ import time
 
 from loguru import logger
 
-from drivers.interface.if_pyserial import Pyserial_UartInterfaceBuilder
+from drivers.interface.if_pyserial import PySerial_UartInterfaceBuilder
 from drivers.lc319 import LC319
 
-Pyserial_UartInterfaceBuilder("COM29").register()
+PySerial_UartInterfaceBuilder("COM29").register()
 
 flow = LC319()
 

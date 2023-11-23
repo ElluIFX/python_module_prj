@@ -1,7 +1,7 @@
 import time
 from struct import pack, unpack
 
-from .interface import InterfaceManager
+from .interface import request_interface
 
 REF_REG_0 = 0xC0
 REF_REG_0_VAL = 0xEE
@@ -115,7 +115,7 @@ class VL53L0XError(Exception):
 
 class VL53L0X:
     def __init__(self, addr: int = 0x29):
-        self._dev = InterfaceManager.request_i2c_interface("VL53L0X", addr)
+        self._dev = request_interface("i2c", "VL53L0X", addr)
         self._stop_variable = 0
         self._gpio_func = VL53L0X_GPIO_FUNC_NEW_MEASURE_READY
         self._soft_reset()
