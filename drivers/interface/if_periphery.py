@@ -4,6 +4,7 @@ from typing import List, Optional, Union
 from periphery import I2C, SPI, I2CError, Serial
 
 from .manager import (
+    GPIOInterfaceTemplate,
     I2CInterfaceTemplate,
     I2CMessageTemplate,
     InterfaceBuilderTemplate,

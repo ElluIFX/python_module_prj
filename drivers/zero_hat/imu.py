@@ -3,7 +3,7 @@ from typing import Callable, List, Tuple
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-from zero_hat.utils import BaseStruct, ByteVar
+from .utils import BaseStruct, ByteVar
 
 
 class IMUDataStruct(BaseStruct):  # IMU传感器数据包

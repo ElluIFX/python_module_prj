@@ -1,3 +1,4 @@
+import os
 import re
 import struct
 import time
@@ -5,6 +6,14 @@ from threading import Event
 from typing import List, Literal
 
 from loguru import logger
+
+
+def get_permission(dev):
+    if os.name != "posix":
+        raise Exception(f"Permission denied to access {dev}")
+    logger.warning(f"[ZH] Permission denied to access {dev}, tring get permission")
+    if os.system(f"sudo chmod 666 {dev}") != 0:
+        raise Exception(f"Access to {dev} failed, please check your permission")
 
 
 class ByteVar:

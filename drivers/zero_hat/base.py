@@ -1,13 +1,12 @@
-import os
 import threading
 import time
 from threading import Event
 from typing import Callable, Dict, List, Optional, Union
 
 from loguru import logger
-from zero_hat.serial import SerialReaderBuffered, SerialReaderLike
-from zero_hat.smbus import I2C
-from zero_hat.utils import BaseEvent, BaseStruct, ByteVar
+from .serial import SerialReaderBuffered, SerialReaderLike
+from .smbus import I2C
+from .utils import BaseEvent, BaseStruct, ByteVar
 
 from drivers.interface import InterfaceManager
 
@@ -41,13 +40,6 @@ class ZHEventStruct:
         0x01: test,
     }
 
-
-def _get_permission(dev):
-    if os.name != "posix":
-        raise Exception(f"Permission denied to access {dev}")
-    logger.warning(f"[ZH] Permission denied to access {dev}, tring get permission")
-    if os.system(f"sudo chmod 666 {dev}") != 0:
-        raise Exception(f"Access to {dev} failed, please check your permission")
 
 
 class ZHBaseLayer(object):

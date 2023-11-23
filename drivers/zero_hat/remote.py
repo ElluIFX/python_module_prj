@@ -6,8 +6,8 @@ from typing import Callable, Optional, Tuple
 
 from loguru import logger
 
-from zero_hat.application import ZHAppLayer
-from zero_hat.base import ZHStateStruct
+from .application import ZHAppLayer
+from .base import ZHStateStruct
 
 
 def get_ip():

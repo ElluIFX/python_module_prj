@@ -4,9 +4,9 @@ import time
 from queue import Queue
 from typing import Callable, Literal, Optional
 
-from zero_hat.base import ZHBaseLayer
-from zero_hat.imu import BNOIMU
-from zero_hat.utils import ByteVar
+from .base import ZHBaseLayer
+from .imu import BNOIMU
+from .utils import ByteVar
 
 key_act_dict = {
     0: "null",
@@ -88,7 +88,7 @@ class ZHProtocolLayer(ZHBaseLayer):
         self.imu.update(data)
         self._print_state()
 
-    def set_imu(self, enable: bool, report_ms: int = 10) -> None:
+    def set_imu(self, enable: bool, report_ms: int = 20) -> None:
         """
         设置IMU传感器
         enable: 是否开启

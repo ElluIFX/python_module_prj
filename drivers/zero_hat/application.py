@@ -2,8 +2,8 @@ import time
 from typing import List
 
 from loguru import logger
-from zero_hat.protocal import ZHProtocolLayer
-from zero_hat.utils import hsv_to_rgb
+from .protocal import ZHProtocolLayer
+from .utils import hsv_to_rgb
 
 
 class WS2812(object):
