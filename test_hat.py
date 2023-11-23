@@ -1,15 +1,16 @@
 import time
 
 from drivers.interface import register_interface
+from drivers.interface.utils import get_permission
 from drivers.zero_hat import ZeroHat, logger
-from drivers.zero_hat.utils import get_permission
 
 get_permission("/dev/i2c-3")
 register_interface("smbus2", "i2c", 3)
+register_interface("periphery", "gpio", {"INT": "GPIOAO_3"})
 
 hat = ZeroHat()
 # hat.start_listen_serial(print_state=True, baudrate=921600)
-hat.start_listen_i2c(print_state=True)
+hat.start_listen_i2c(print_state=True, use_int=True)
 hat.wait_for_connection()
 
 

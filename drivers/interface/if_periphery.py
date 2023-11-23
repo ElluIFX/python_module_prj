@@ -1,7 +1,7 @@
 from functools import lru_cache, partial
 from typing import Dict, List, Optional, Union
 
-from periphery import GPIO, I2C, SPI, I2CError, Serial
+from periphery import I2C, SPI, CdevGPIO, I2CError, Serial
 
 from .manager import (
     GPIOInterfaceTemplate,
@@ -277,7 +277,7 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
 
     def __init__(self, pinmap: Optional[Dict[str, str]]) -> None:
         self._pinmap = pinmap
-        self._pins: Dict[str, GPIO] = {}
+        self._pins: Dict[str, CdevGPIO] = {}
         self._gpios = list_gpio()
 
     @lru_cache(64)
@@ -324,14 +324,14 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
         chip, offset, used = self._gpios[pin_name]
         # assert not used, f"GPIO {pin_name} is already used"
         try:
-            self._pins[pin_name] = GPIO(
-                f"/dev/gpiochip{chip}", offset, **mode_map[mode]
+            self._pins[pin_name] = CdevGPIO(
+                path=f"/dev/gpiochip{chip}", line=offset, **mode_map[mode]
             )
         except IOError as e:
             if e.errno == 13:
                 get_permission(f"/dev/gpiochip{chip}")
-                self._pins[pin_name] = GPIO(
-                    f"/dev/gpiochip{chip}", offset, **mode_map[mode]
+                self._pins[pin_name] = CdevGPIO(
+                    path=f"/dev/gpiochip{chip}", line=offset, **mode_map[mode]
                 )
 
     def write(self, pin_name: str, value: bool):

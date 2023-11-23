@@ -4,11 +4,12 @@ from threading import Event
 from typing import Callable, Dict, List, Optional, Union
 
 from loguru import logger
+
+from drivers.interface import InterfaceManager
+
 from .serial import SerialReaderBuffered, SerialReaderLike
 from .smbus import I2C
 from .utils import BaseEvent, BaseStruct, ByteVar
-
-from drivers.interface import InterfaceManager
 
 
 class ZHSettingStruct:
@@ -39,7 +40,6 @@ class ZHEventStruct:
     EVENT_CODE = {
         0x01: test,
     }
-
 
 
 class ZHBaseLayer(object):
