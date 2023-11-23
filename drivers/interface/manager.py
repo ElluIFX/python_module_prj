@@ -336,6 +336,7 @@ class GPIOInterfaceTemplate:
         "input_pull_down",
         "output_push_pull",
         "output_open_drain",
+        "output_open_source",
         "output_pwm",
         "input_analog",
         "output_analog",
@@ -433,7 +434,7 @@ class GPIOInterfaceTemplate:
 
     def close(self):
         """
-        Close the GPIO bus
+        Close the GPIO bus and free all pins
         """
         ...
 

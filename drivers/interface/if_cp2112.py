@@ -157,8 +157,8 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def __init__(self, pinmap: Optional[Dict[str, AvailableGPIOs]]) -> None:
         self._pinmap = pinmap
 
-    @lru_cache(32)
-    def _get_pin(self, pin_name: str) -> str:
+    @lru_cache(64)
+    def _remap(self, pin_name: str) -> str:
         if self._pinmap is not None:
             pin_name = self._pinmap.get(pin_name, pin_name)
         return pin_name
@@ -201,7 +201,7 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
 
     def set_mode(self, pin_name: str, mode: GPIOModes):
         assert _dev is not None
-        pin_name = self._get_pin(pin_name)
+        pin_name = self._remap(pin_name)
         offset = int(pin_name[-1])
         with _lock:
             dir, push_pull, special, clock_divider = _dev.get_gpio_config()
@@ -233,7 +233,7 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
 
     def write_pwm_freq(self, pin_name: str, freq: int):
         assert _dev is not None
-        pin_name = self._get_pin(pin_name)
+        pin_name = self._remap(pin_name)
         assert pin_name == "Pin_7", "Only Pin_7 supports PWM"
         # 0=48 MHz; Otherwise freq=(48 MHz)/(2*clock_divider)
         if freq >= 48000000:
@@ -249,14 +249,14 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
 
     def write(self, pin_name: str, value: bool):
         assert _dev is not None
-        pin_name = self._get_pin(pin_name)
+        pin_name = self._remap(pin_name)
         offset = int(pin_name[-1])
         with _lock:
             _dev.set_pin(offset, 1 if value else 0)
 
     def read(self, pin_name: str) -> bool:
         assert _dev is not None
-        pin_name = self._get_pin(pin_name)
+        pin_name = self._remap(pin_name)
         offset = int(pin_name[-1])
         with _lock:
             return _dev.get_pin(offset)

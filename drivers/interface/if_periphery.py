@@ -1,7 +1,7 @@
-from functools import partial
-from typing import List, Optional, Union
+from functools import lru_cache, partial
+from typing import Dict, List, Optional, Union
 
-from periphery import I2C, SPI, I2CError, Serial
+from periphery import GPIO, I2C, SPI, I2CError, Serial
 
 from .manager import (
     GPIOInterfaceTemplate,
@@ -11,6 +11,7 @@ from .manager import (
     SPIInterfaceTemplate,
     UartInterfaceTemplate,
 )
+from .utils import get_permission, list_gpio
 
 
 class Periphery_I2CMessage(I2CMessageTemplate):
@@ -269,3 +270,90 @@ class Periphery_SPIInterfaceBuilder(InterfaceBuilderTemplate):
 
     def build(self, mode: int, speed_hz: int) -> Periphery_SPIInterface:
         return Periphery_SPIInterface(self._devpath, mode, speed_hz)
+
+
+class Periphery_GPIOInterface(GPIOInterfaceTemplate):
+    GPIOModes = GPIOInterfaceTemplate.GPIOModes
+
+    def __init__(self, pinmap: Optional[Dict[str, str]]) -> None:
+        self._pinmap = pinmap
+        self._pins: Dict[str, GPIO] = {}
+        self._gpios = list_gpio()
+
+    @lru_cache(64)
+    def _remap(self, pin_name: str) -> str:
+        if self._pinmap is not None:
+            pin_name = self._pinmap.get(pin_name, pin_name)
+        return pin_name
+
+    def get_available_pins(self) -> List[tuple[str, List[GPIOModes]]]:
+        return [
+            (
+                name,
+                [
+                    "input_no_pull",
+                    "input_pull_down",
+                    "input_pull_up",
+                    "output_open_drain",
+                    "output_open_source",
+                    "output_push_pull",
+                ],
+            )
+            for name in self._gpios.keys()
+        ]
+
+    def free(self, pin_name: str) -> None:
+        pin_name = self._remap(pin_name)
+        if pin_name in self._pins:
+            self._pins[pin_name].close()
+            self._pins.pop(pin_name)
+
+    def set_mode(self, pin_name: str, mode: GPIOModes) -> None:
+        mode_map = {
+            "input_no_pull": {"direction": "in", "bias": "disable"},
+            "input_pull_down": {"direction": "in", "bias": "pull_down"},
+            "input_pull_up": {"direction": "in", "bias": "pull_up"},
+            "output_open_drain": {"direction": "out", "drive": "open_drain"},
+            "output_open_source": {"direction": "out", "drive": "open_source"},
+            "output_push_pull": {"direction": "out", "drive": "default"},
+        }
+        pin_name = self._remap(pin_name)
+        if pin_name in self._pins:
+            self._pins[pin_name].close()
+            self._pins.pop(pin_name)
+        chip, offset, used = self._gpios[pin_name]
+        # assert not used, f"GPIO {pin_name} is already used"
+        try:
+            self._pins[pin_name] = GPIO(
+                f"/dev/gpiochip{chip}", offset, **mode_map[mode]
+            )
+        except IOError as e:
+            if e.errno == 13:
+                get_permission(f"/dev/gpiochip{chip}")
+                self._pins[pin_name] = GPIO(
+                    f"/dev/gpiochip{chip}", offset, **mode_map[mode]
+                )
+
+    def write(self, pin_name: str, value: bool):
+        pin_name = self._remap(pin_name)
+        assert pin_name in self._pins, f"GPIO {pin_name} not initialized"
+        self._pins[pin_name].write(value)
+
+    def read(self, pin_name: str) -> bool:
+        pin_name = self._remap(pin_name)
+        assert pin_name in self._pins, f"GPIO {pin_name} not initialized"
+        return self._pins[pin_name].read()
+
+    def close(self) -> None:
+        for pin in self._pins.values():
+            pin.close()
+        self._pins.clear()
+
+
+class Periphery_GPIOInterfaceBuilder(InterfaceBuilderTemplate):
+    def __init__(self, pinmap: Optional[Dict[str, str]] = None) -> None:
+        self._pinmap = pinmap
+        self.dev_type = "gpio"
+
+    def build(self) -> Periphery_GPIOInterface:
+        return Periphery_GPIOInterface(self._pinmap)
