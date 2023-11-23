@@ -44,7 +44,7 @@ def build_msg(addr) -> type["SMBus2_I2CMessage"]:
             return repr(self._msg)
 
         def __iter__(self):
-            return iter(bytes(self))
+            return iter(bytes(self._msg))
 
     return SMBus2_I2CMessage
 
