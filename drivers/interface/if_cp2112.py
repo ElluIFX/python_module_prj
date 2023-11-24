@@ -2,31 +2,18 @@ from functools import cached_property, lru_cache
 from threading import Lock
 from typing import Dict, List, Literal, Optional, Tuple, Union
 
-from drivers.cp2112 import CP2112
-
+from .driver.cp2112 import CP2112, _reset_error_type
 from .manager import (
     GPIOInterfaceTemplate,
     I2CInterfaceTemplate,
     I2CMessageTemplate,
     InterfaceBuilderTemplate,
 )
-
-
-class _FakeLock:
-    def __enter__(self):
-        pass
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
-
+from .utils import FakeLock, InterfacefIOError, InterfaceNotFound
 
 _dev: Optional[CP2112] = None  # hid device should be opened only once
-_lock = _FakeLock()
-
-
-def bus_scan():
-    assert _dev is not None
-    return _dev.bus_scan()
+_lock = FakeLock()
+_reset_error_type(InterfacefIOError)
 
 
 class CP2112_I2CMessage(I2CMessageTemplate):
@@ -64,6 +51,7 @@ class CP2112_I2CMessage(I2CMessageTemplate):
 class CP2112_I2CInterface(I2CInterfaceTemplate):
     def __init__(self, addr: int) -> None:
         self._addr = addr
+        return super().__init__()
 
     @property
     def address(self) -> int:
@@ -108,6 +96,7 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
         with _lock:
             return bytes(_dev.write_read_i2c(self._addr, [register], length))
 
+    @property
     def new_msg(self) -> type[CP2112_I2CMessage]:
         return CP2112_I2CMessage
 
@@ -116,7 +105,7 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
         with _lock:
             return _dev.check_i2c_device(self._addr)
 
-    def transfer_msg(self, msgs: list[CP2112_I2CMessage]):
+    def exchange_msgs(self, msgs: list[CP2112_I2CMessage]):
         assert _dev is not None
         with _lock:
             for msg in msgs:
@@ -148,19 +137,24 @@ def _CLEAR_BIT(x, bit):
     return x & ~(1 << bit)
 
 
+CP2112_GPIO_LIST = Literal[
+    "Pin_0", "Pin_1", "Pin_2", "Pin_3", "Pin_4", "Pin_5", "Pin_6", "Pin_7"
+]
+
+
 class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     GPIOModes = GPIOInterfaceTemplate.GPIOModes
-    AvailableGPIOs = Literal[
-        "Pin_0", "Pin_1", "Pin_2", "Pin_3", "Pin_4", "Pin_5", "Pin_6", "Pin_7"
-    ]
 
-    def __init__(self, pinmap: Optional[Dict[str, AvailableGPIOs]]) -> None:
+    def __init__(self, pinmap: Optional[Dict[str, CP2112_GPIO_LIST]]) -> None:
         self._pinmap = pinmap
+        return super().__init__()
 
     @lru_cache(64)
     def _remap(self, pin_name: str) -> str:
         if self._pinmap is not None:
             pin_name = self._pinmap.get(pin_name, pin_name)
+        if pin_name not in [f"Pin_{i}" for i in range(8)]:
+            raise InterfaceNotFound(f"Pin {pin_name} not found")
         return pin_name
 
     def get_available_pins(self) -> List[Tuple[str, List[GPIOModes]]]:
@@ -264,11 +258,14 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
 
 class CP2112_GPIOInterfaceBuilder(InterfaceBuilderTemplate):
     def __init__(
-        self, pinmap: Optional[Dict[str, CP2112_GPIOInterface.AvailableGPIOs]] = None
+        self, pinmap: Optional[Dict[str, CP2112_GPIO_LIST]] = None, add_lock=True
     ) -> None:
         global _dev
         if _dev is None:
             _dev = CP2112()
+            if add_lock:
+                global _lock
+                _lock = Lock()
         self.dev_type = "gpio"
         self._pinmap = pinmap
 

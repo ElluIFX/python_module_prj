@@ -1,7 +1,60 @@
 from functools import cached_property
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, final
 
 from loguru import logger
+
+__all__ = [
+    "I2CMessageTemplate",
+    "I2CInterfaceTemplate",
+    "SPIInterfaceTemplate",
+    "UARTInterfaceTemplate",
+    "GPIOInterfaceTemplate",
+    "InterfaceBuilderTemplate",
+    "InterfaceManager",
+]
+
+
+class BaseInterfaceTemplate:
+    def __init__(self) -> None:
+        self._destroyed = False
+        self._on_destroy: list[Callable[[BaseInterfaceTemplate], None]] = []
+        logger.debug(f"Interface {self.__class__.__name__} initialized")
+
+    def close(self):
+        """
+        Close the interface
+
+        Can be reopened by calling reopen()
+        """
+        ...
+
+    def reopen(self):
+        """
+        Reopen the interface
+        """
+        ...
+
+    @final
+    def destroy(self):
+        """
+        Completely destroy the interface
+        Can not be reopened
+
+        Note: Though this function can be automatically called \
+              when the instance is garbage collected, but module \
+              should better call this function manually as soon \
+              as possible to free the hardware resource
+        """
+        if self._destroyed:
+            return
+        self.close()
+        for func in self._on_destroy:
+            func(self)
+        self._destroyed = True
+        logger.debug(f"Interface {self.__class__.__name__} destroyed")
+
+    def __del__(self):
+        self.destroy()
 
 
 class I2CMessageTemplate:
@@ -16,20 +69,6 @@ class I2CMessageTemplate:
     def read(length: int) -> "I2CMessageTemplate":
         """
         Read data from the I2C bus
-        """
-        raise NotImplementedError()
-
-    @staticmethod
-    def write_addr(addr: int, data: Union[bytes, List[int]]) -> "I2CMessageTemplate":
-        """
-        Write data to the I2C bus with specified address
-        """
-        raise NotImplementedError()
-
-    @staticmethod
-    def read_addr(addr: int, length: int) -> "I2CMessageTemplate":
-        """
-        Read data from the I2C bus with specified address
         """
         raise NotImplementedError()
 
@@ -58,7 +97,7 @@ class I2CMessageTemplate:
         raise NotImplementedError()
 
 
-class I2CInterfaceTemplate:
+class I2CInterfaceTemplate(BaseInterfaceTemplate):
     @property
     def address(self) -> int:
         """
@@ -129,9 +168,9 @@ class I2CInterfaceTemplate:
         """
         return 4095
 
-    def transfer_msg(self, msgs: list[I2CMessageTemplate]):
+    def exchange_msgs(self, msgs: list[I2CMessageTemplate]):
         """
-        Excute a series of I2C messages
+        Exchange a series of I2C messages on bus
         """
         raise NotImplementedError()
 
@@ -141,20 +180,8 @@ class I2CInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def close(self):
-        """
-        Close the I2C bus
-        """
-        ...
 
-    def reopen(self):
-        """
-        Reopen the I2C bus
-        """
-        ...
-
-
-class SPIInterfaceTemplate:
+class SPIInterfaceTemplate(BaseInterfaceTemplate):
     @property
     def speed_hz(self) -> float:
         """
@@ -183,7 +210,35 @@ class SPIInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def write(self, data: bytes):
+    @property
+    def byteorder(self) -> Literal["lsb", "msb"]:
+        """
+        Return the byte order of the SPI bus
+        """
+        raise NotImplementedError()
+
+    @byteorder.setter
+    def byteorder(self, byteorder: Literal["lsb", "msb"]):
+        """
+        Set the byte order of the SPI bus
+        """
+        raise NotImplementedError()
+
+    @property
+    def bits_per_word(self) -> int:
+        """
+        Return the bits per word of the SPI bus
+        """
+        raise NotImplementedError()
+
+    @bits_per_word.setter
+    def bits_per_word(self, bits_per_word: int):
+        """
+        Set the bits per word of the SPI bus
+        """
+        raise NotImplementedError()
+
+    def write(self, data: Union[bytes, List[int]]):
         """
         Write data to the SPI bus
         """
@@ -195,46 +250,14 @@ class SPIInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def transfer(self, data: bytes) -> bytes:
+    def transfer(self, data: Union[bytes, List[int]]) -> bytes:
         """
         Write and read data from the SPI bus
         """
         raise NotImplementedError()
 
-    def close(self):
-        """
-        Close the SPI bus
-        """
-        ...
 
-    def reopen(self):
-        """
-        Reopen the SPI bus
-        """
-        ...
-
-    def set_auto_cs(self, enable: bool, polarity: bool):
-        """
-        Set the auto chip select of the SPI bus
-
-        plority: True for active high, False for active low
-
-        Note: If this function raises NotImplementedError, \
-              user should fallback to using GPIO interface. \
-              For drivers, if the device can auto manage the \
-              CS pin, this function should be overrided with \
-              empty body.
-        """
-        raise NotImplementedError()
-
-    def set_cs(self, level: bool):
-        """
-        Set the chip select of the SPI bus
-        """
-        raise NotImplementedError()
-
-
-class UartInterfaceTemplate:
+class UARTInterfaceTemplate(BaseInterfaceTemplate):
     @property
     def baudrate(self) -> int:
         """
@@ -250,48 +273,66 @@ class UartInterfaceTemplate:
         raise NotImplementedError()
 
     @property
-    def data_bits(self) -> int:
+    def data_bits(self) -> Literal[5, 6, 7, 8, 16]:
         """
         Return the data bits of the UART bus
         """
         raise NotImplementedError()
 
     @data_bits.setter
-    def data_bits(self, data_bits: int):
+    def data_bits(self, data_bits: Literal[5, 6, 7, 8, 16]):
         """
         Set the data bits of the UART bus
         """
         raise NotImplementedError()
 
     @property
-    def parity(self) -> str:
+    def parity(self) -> Literal["N", "E", "O", "M", "S"]:
         """
         Return the parity of the UART bus
         """
         raise NotImplementedError()
 
     @parity.setter
-    def parity(self, parity: str):
+    def parity(self, parity: Literal["N", "E", "O", "M", "S"]):
         """
         Set the parity of the UART bus
         """
         raise NotImplementedError()
 
     @property
-    def stop_bits(self) -> int:
+    def stop_bits(self) -> Literal["1", "1.5", "2"]:
         """
         Return the stop bits of the UART bus
         """
         raise NotImplementedError()
 
     @stop_bits.setter
-    def stop_bits(self, stop_bits: int):
+    def stop_bits(self, stop_bits: Literal["1", "1.5", "2"]):
         """
         Set the stop bits of the UART bus
         """
         raise NotImplementedError()
 
-    def write(self, data: bytes):
+    @property
+    def timeout(self) -> Optional[float]:
+        """
+        Return the timeout of the UART bus
+
+        None: blocking
+        """
+        raise NotImplementedError()
+
+    @timeout.setter
+    def timeout(self, timeout: Optional[float]):
+        """
+        Set the timeout of the UART bus
+
+        None: blocking
+        """
+        raise NotImplementedError()
+
+    def write(self, data: Union[bytes, List[int]]):
         """
         Write data to the UART bus
         """
@@ -303,23 +344,11 @@ class UartInterfaceTemplate:
         """
         raise NotImplementedError()
 
-    def read(self, length: int, timeout: Optional[float] = None) -> bytes:
+    def read(self, length: int) -> bytes:
         """
         Read data from the UART bus
         """
         raise NotImplementedError()
-
-    def close(self):
-        """
-        Close the UART bus
-        """
-        ...
-
-    def reopen(self):
-        """
-        Reopen the UART bus
-        """
-        ...
 
     @property
     def in_waiting(self) -> int:
@@ -329,7 +358,7 @@ class UartInterfaceTemplate:
         raise NotImplementedError()
 
 
-class GPIOInterfaceTemplate:
+class GPIOInterfaceTemplate(BaseInterfaceTemplate):
     GPIOModes = Literal[
         "input_no_pull",
         "input_pull_up",
@@ -432,17 +461,11 @@ class GPIOInterfaceTemplate:
 
         return GPIOInstance(pin_name, self)
 
-    def close(self):
-        """
-        Close the GPIO bus and free all pins
-        """
-        ...
-
 
 AvailableTemplates = Union[
     I2CInterfaceTemplate,
     SPIInterfaceTemplate,
-    UartInterfaceTemplate,
+    UARTInterfaceTemplate,
     GPIOInterfaceTemplate,
 ]
 
@@ -472,6 +495,24 @@ class InterfaceBuilderTemplate:
         """
         raise NotImplementedError()
 
+    @final
+    def _internal_build(self, *args, **kwargs) -> AvailableTemplates:
+        """
+        Internal build function
+
+        This function will be called by the interface manager
+        """
+        instance = self.build(*args, **kwargs)
+        instance._on_destroy.append(self.destroy)
+        return instance
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        """
+        Destroy the interface
+        """
+        ...
+
+    @final
     def register(self, module_name: Union[None, str, List[str]] = None):
         """
         Register the interface to the interface manager
@@ -488,6 +529,7 @@ class InterfaceBuilderTemplate:
         self._module_name = module_name
         return self
 
+    @final
     def unregister(self):
         """
         Unregister the interface from the interface manager
@@ -546,7 +588,7 @@ class InterfaceManager:
             fullname = f"{dev_type}_{module_name}"
             assert (
                 fullname not in specific_interface_dict
-            ), f"Interface {fullname} already registered"
+            ), f"Interface {dev_type} for module {module_name} already registered"
             specific_interface_dict[fullname] = interface
             logger.info(
                 f"Registered a specific {dev_type.upper()} interface for {module_name.upper()}"
@@ -566,8 +608,9 @@ class InterfaceManager:
         Unregister a global interface
         """
         assert dev_type in interface_dict, f"Interface {dev_type} not supported"
-        interface_dict[dev_type] = None
-        logger.info(f"Global {dev_type.upper()} interface unregistered")
+        if interface_dict[dev_type] is not None:
+            interface_dict[dev_type] = None
+            logger.info(f"Global {dev_type.upper()} interface unregistered")
 
     @staticmethod
     def unregister_specific_interface(
@@ -594,9 +637,9 @@ class InterfaceManager:
                 unregister(dev_type, name)
 
     @staticmethod
-    def _internal_get_dev(
-        dev_type: Any, module_name: str, *args, **kwargs
-    ) -> AvailableTemplates:
+    def _internal_get_builder(
+        dev_type: Any, module_name: str
+    ) -> InterfaceBuilderTemplate:
         module_name = module_name.lower()
         logger.info(
             f"Module {module_name.upper()} requested a {dev_type.upper()} interface"
@@ -609,41 +652,32 @@ class InterfaceManager:
         assert (
             dev is not None
         ), f"{dev_type.upper()} interface not registered, register it first"
-        return dev.build(*args, **kwargs)
+        return dev
 
     @staticmethod
     def request_i2c_interface(module_name: str, address: int) -> I2CInterfaceTemplate:
-        return InterfaceManager._internal_get_dev("i2c", module_name, address=address)  # type: ignore
+        return InterfaceManager._internal_get_builder(
+            "i2c", module_name
+        )._internal_build(address=address)  # type: ignore
 
     @staticmethod
     def request_spi_interface(
         module_name: str, mode: int, speed_hz: int
     ) -> SPIInterfaceTemplate:
-        return InterfaceManager._internal_get_dev(
-            "spi", module_name, mode=mode, speed_hz=speed_hz
-        )  # type: ignore
+        return InterfaceManager._internal_get_builder(
+            "spi", module_name
+        )._internal_build(mode=mode, speed_hz=speed_hz)  # type: ignore
 
     @staticmethod
     def request_uart_interface(
         module_name: str, baudrate: int
-    ) -> UartInterfaceTemplate:
-        return InterfaceManager._internal_get_dev(
-            "uart", module_name, baudrate=baudrate
-        )  # type: ignore
+    ) -> UARTInterfaceTemplate:
+        return InterfaceManager._internal_get_builder(
+            "uart", module_name
+        )._internal_build(baudrate=baudrate)  # type: ignore
 
     @staticmethod
     def request_gpio_interface(module_name: str) -> GPIOInterfaceTemplate:
-        return InterfaceManager._internal_get_dev("gpio", module_name)  # type: ignore
-
-
-__all__ = [
-    "I2CMessageTemplate",
-    "I2CInterfaceTemplate",
-    "SPIInterfaceTemplate",
-    "UartInterfaceTemplate",
-    "GPIOInterfaceTemplate",
-    "InterfaceBuilderTemplate",
-    "AvailableTemplates",
-    "AvailableDevTypes",
-    "InterfaceManager",
-]
+        return InterfaceManager._internal_get_builder(
+            "gpio", module_name
+        )._internal_build()  # type: ignore

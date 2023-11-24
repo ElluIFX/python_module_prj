@@ -1,11 +1,11 @@
 import cv2
 import numpy as np
-from loguru import logger
 
 from drivers.csp202tt import CSP202TT
-from drivers.interface.if_pyserial import PySerial_UartInterfaceBuilder
+from drivers.interface import register_interface
 
-PySerial_UartInterfaceBuilder("COM29").register()
+# PySerial_UARTInterfaceBuilder("COM29").register()
+register_interface("pyserial", "uart", port="COM29")
 
 
 radar = CSP202TT()

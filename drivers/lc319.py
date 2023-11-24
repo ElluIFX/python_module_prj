@@ -48,7 +48,7 @@ class LC319(object):
     """
 
     def __init__(self, start_listen=True) -> None:
-        self._ser = request_interface("uart","LC319", 115200)
+        self._ser = request_interface("uart", "LC319", 115200)
         self.state = FlowState(0, 0, 0, 0, 0, 0, 0, False, 0)
         self.last_update_time = 0
         if start_listen:

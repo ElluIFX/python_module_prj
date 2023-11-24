@@ -9,7 +9,7 @@ class MCP3421:
     """
 
     def __init__(self, address=0x68) -> None:
-        self._bus = request_interface("i2c","MCP3421", address)
+        self._bus = request_interface("i2c", "MCP3421", address)
         self._calibration_factor = 1
         self._calibration_offset = 0
         self._set_configuration(1, 1, 3, 0)  # continuous conversion, 18bit, PGA=1x
@@ -99,7 +99,7 @@ class MCP3421:
             msg = self._bus.new_msg.read(3)
         else:
             msg = self._bus.new_msg.read(2)
-        self._bus.transfer_msg([msg])
+        self._bus.exchange_msgs([msg])
         data = bytes(msg)
         msb = data[0] >> 7
         if self._smp == 3:

@@ -1,9 +1,9 @@
 import time
 
 from drivers.aht21b import AHT21B
-from drivers.interface.if_cp2112 import CP2112_I2CInterfaceBuilder
+from drivers.interface import register_interface
 
-CP2112_I2CInterfaceBuilder().register()
+register_interface("cp2112", "i2c", clock=400000)
 
 aht = AHT21B()
 

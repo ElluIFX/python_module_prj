@@ -11,7 +11,7 @@ class i2c(object):
         except ValueError:
             raise ValueError(f"I2C device address invalid: {address}")
 
-        self._bus = request_interface("i2c","luma.core", address)
+        self._bus = request_interface("i2c", "luma.core", address)
         self._managed = True
 
     def command(self, *cmd):
@@ -33,7 +33,7 @@ class i2c(object):
                     )
                 )
                 i += block_size
-            self._bus.transfer_msg(msgs)
+            self._bus.exchange_msgs(msgs)
         else:
             self._bus.write_reg_data(self._data_mode, data)
 

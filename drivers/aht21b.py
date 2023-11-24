@@ -9,7 +9,7 @@ class AHT21B:
     """
 
     def __init__(self) -> None:
-        self._bus = request_interface("i2c","AHT21B", 0x38)
+        self._bus = request_interface("i2c", "AHT21B", 0x38)
         self._temperature = 0.0
         self._humidity = 0.0
         status = self._bus.read_reg_byte(0x71)
@@ -35,7 +35,7 @@ class AHT21B:
         Call this function after data is ready
         """
         rd = self._bus.new_msg.read(6)  # crc byte is ignored
-        self._bus.transfer_msg([rd])
+        self._bus.exchange_msgs([rd])
         data = bytes(rd)
         raw_temperature = ((data[3] & 0x0F) << 16) | (data[4] << 8) | data[5]
         raw_humidity = (data[1] << 12) | (data[2] << 4) | (data[3] >> 4)

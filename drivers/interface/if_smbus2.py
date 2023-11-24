@@ -70,6 +70,7 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
             self._bus = partial(_FakeSMBus, self._bus_instance)
         else:
             self._bus = partial(SMBus, bus=bus)
+        return super().__init__()
 
     @property
     def address(self) -> int:
@@ -107,7 +108,7 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
     def new_msg(self) -> type["SMBus2_I2CMessage"]:
         return build_msg(self._address)
 
-    def transfer_msg(self, msgs: list["SMBus2_I2CMessage"]):
+    def exchange_msgs(self, msgs: list["SMBus2_I2CMessage"]):
         smbus_msgs = [msg._msg for msg in msgs]
         with self._bus() as bus:
             bus.i2c_rdwr(*smbus_msgs)
@@ -125,6 +126,7 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
             self._bus_instance.close()
 
     def reopen(self):
+        assert not self._destroyed, "Interface has been destroyed"
         if self._keep_alive:
             self._bus_instance = SMBus(self._bus_num)
             self._bus = partial(_FakeSMBus, self._bus_instance)

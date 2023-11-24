@@ -384,13 +384,17 @@ class VL53L0X:
         )
 
     def _soft_reset(self):
+        cnt = 0
         self._write_byte(SOFT_RESET_GO2_SOFT_RESET_N, 0x00)
-        while self._read_byte(IDENTIFICATION_MODEL_ID) != 0:
+        while self._read_byte(IDENTIFICATION_MODEL_ID) != 0 and cnt < 100:
             time.sleep(0.01)
+            cnt += 1
         time.sleep(0.03)
         self._write_byte(SOFT_RESET_GO2_SOFT_RESET_N, 0x01)
-        while self._read_byte(IDENTIFICATION_MODEL_ID) == 0:
+        cnt = 0
+        while self._read_byte(IDENTIFICATION_MODEL_ID) == 0 and cnt < 100:
             time.sleep(0.01)
+            cnt += 1
         time.sleep(0.03)
 
     def start_measurement(self, mode):

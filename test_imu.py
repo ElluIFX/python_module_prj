@@ -4,10 +4,11 @@ import time
 from loguru import logger
 
 from drivers.imu import IMU
-from drivers.interface.if_cp2112 import CP2112_I2CInterfaceBuilder
+from drivers.interface import register_interface
+from drivers.interface.utils import i2c_bus_scan
 
-CP2112_I2CInterfaceBuilder(clock=400000).register()
-
+register_interface("ch347", "i2c", clock=400000)
+i2c_bus_scan()
 imu = IMU()
 imu.kalman_init()
 imu.kalman_calibrate()

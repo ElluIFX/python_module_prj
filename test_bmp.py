@@ -4,9 +4,9 @@ from loguru import logger
 
 from drivers.aht20 import AHT20
 from drivers.bmp280 import BMP280
-from drivers.interface.if_cp2112 import CP2112_I2CInterfaceBuilder
+from drivers.interface import register_interface
 
-CP2112_I2CInterfaceBuilder().register()
+register_interface("cp2112", "i2c", clock=400000)
 
 aht = AHT20()
 bmp = BMP280()

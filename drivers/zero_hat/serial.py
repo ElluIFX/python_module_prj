@@ -5,16 +5,16 @@ from typing import Union
 
 from loguru import logger
 
-from drivers.interface import UartInterfaceTemplate
+from drivers.interface import UARTInterfaceTemplate
 
 
 class SerialReader:
-    def __init__(self, serial_instance: UartInterfaceTemplate, startBit):
+    def __init__(self, serial_instance: UARTInterfaceTemplate, startBit):
         """
         初始化串口读取器。
 
         Args:
-            serial_instance (UartInterfaceTemplate): 串口实例。
+            serial_instance (UARTInterfaceTemplate): 串口实例。
             startBit (list): 读取起始位。
 
         Returns:
@@ -77,12 +77,12 @@ class SerialReaderBuffered:
     类似于SerialReader, 但在内部维护一个缓冲区, 以尝试提高读取效率。
     """
 
-    def __init__(self, serial_instance: UartInterfaceTemplate, startBit):
+    def __init__(self, serial_instance: UARTInterfaceTemplate, startBit):
         """
         初始化串口读取器。
 
         Args:
-            serial_instance (UartInterfaceTemplate): 串口实例。
+            serial_instance (UARTInterfaceTemplate): 串口实例。
             startBit (list): 读取起始位。
 
         Returns:
@@ -152,7 +152,7 @@ class SerialReaderThreaded:
     多线程的串口读取器
     """
 
-    def __init__(self, serial_instance: UartInterfaceTemplate, startBit, buffered=True):
+    def __init__(self, serial_instance: UARTInterfaceTemplate, startBit, buffered=True):
         """
         初始化串口读取器。
 

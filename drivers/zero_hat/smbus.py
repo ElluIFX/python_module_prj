@@ -2,22 +2,22 @@ from typing import List
 
 from loguru import logger
 
-from drivers.interface import InterfaceManager
+from drivers.interface import request_interface
 
 
 class I2C:
     def __init__(self, addr: int) -> None:
-        self.bus = InterfaceManager.request_i2c_interface("Zero-Hat", addr)
+        self.bus = request_interface("i2c", "Zero-Hat", addr)
 
     def read(self) -> List[bytes]:
         try:
             read_len = self.bus.new_msg.read(2)
-            self.bus.transfer_msg([self.bus.new_msg.write([0xFF]), read_len])
+            self.bus.exchange_msgs([self.bus.new_msg.write([0xFF]), read_len])
             len_data = int.from_bytes(bytes(read_len), "little")
             if len_data == 0:
                 return []
             read_data = self.bus.new_msg.read(len_data + 2)
-            self.bus.transfer_msg([self.bus.new_msg.write([0xFF]), read_data])
+            self.bus.exchange_msgs([self.bus.new_msg.write([0xFF]), read_data])
             raw = bytes(read_data)[2:]
             data = []
             while len(raw) > 2 and raw[0] != 0:
@@ -30,7 +30,7 @@ class I2C:
         return []
 
     def write(self, data: bytes) -> None:
-        self.bus.transfer_msg([self.bus.new_msg.write(b"\xFF" + data)])
+        self.bus.exchange_msgs([self.bus.new_msg.write(b"\xFF" + data)])
 
     def close(self) -> None:
         self.bus.close()

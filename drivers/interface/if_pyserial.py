@@ -2,27 +2,32 @@ from typing import Optional
 
 from serial import Serial
 
-from .manager import InterfaceBuilderTemplate, UartInterfaceTemplate
+from .manager import InterfaceBuilderTemplate, UARTInterfaceTemplate
 
 
-class PySerial_UartInterface(UartInterfaceTemplate):
+class PySerial_UARTInterface(UARTInterfaceTemplate):
     def __init__(self, port: str, baudrate: int) -> None:
         self._ser = Serial(port, baudrate, timeout=0, write_timeout=0)
         self._port = port
         self._baudrate = baudrate
-        self._timeout = 0
         try:
             self._ser.set_buffer_size(rx_size=1024 * 1024)  # 1MB
         except Exception:
             pass
+        return super().__init__()
+
+    @property
+    def timeout(self) -> Optional[float]:
+        return self._ser.timeout
+
+    @timeout.setter
+    def timeout(self, timeout: Optional[float]) -> None:
+        self._ser.timeout = timeout
 
     def write(self, data: bytes):
         self._ser.write(data)
 
-    def read(self, length: int, timeout: Optional[float] = None) -> bytes:
-        if timeout is not None and timeout != self._timeout:
-            self._ser.timeout = timeout
-            self._timeout = timeout
+    def read(self, length: int) -> bytes:
         return self._ser.read(length)
 
     @property
@@ -33,6 +38,7 @@ class PySerial_UartInterface(UartInterfaceTemplate):
         self._ser.close()
 
     def reopen(self):
+        assert not self._destroyed, "Interface has been destroyed"
         self._ser.open()
 
     def flush(self):
@@ -55,12 +61,12 @@ class PySerial_UartInterface(UartInterfaceTemplate):
         self._ser.bytesize = data_bits
 
     @property
-    def stop_bits(self) -> int:
-        return int(self._ser.stopbits)
+    def stop_bits(self) -> str:
+        return str(self._ser.stopbits)
 
     @stop_bits.setter
-    def stop_bits(self, stop_bits: int) -> None:
-        self._ser.stopbits = stop_bits
+    def stop_bits(self, stop_bits: str) -> None:
+        self._ser.stopbits = float(stop_bits)
 
     @property
     def parity(self) -> str:
@@ -71,10 +77,10 @@ class PySerial_UartInterface(UartInterfaceTemplate):
         self._ser.parity = parity
 
 
-class PySerial_UartInterfaceBuilder(InterfaceBuilderTemplate):
+class PySerial_UARTInterfaceBuilder(InterfaceBuilderTemplate):
     def __init__(self, port: str) -> None:
         self._port = port
         self.dev_type = "uart"
 
-    def build(self, baudrate: int) -> PySerial_UartInterface:
-        return PySerial_UartInterface(self._port, baudrate)
+    def build(self, baudrate: int) -> PySerial_UARTInterface:
+        return PySerial_UARTInterface(self._port, baudrate)

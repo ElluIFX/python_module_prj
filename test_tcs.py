@@ -1,9 +1,9 @@
 import time
 
-from drivers.interface.if_cp2112 import CP2112_I2CInterfaceBuilder
+from drivers.interface import register_interface
 from drivers.tcs34725 import TCS34725
 
-CP2112_I2CInterfaceBuilder(clock=400000).register()
+register_interface("cp2112", "i2c", clock=400000)
 
 sensor = TCS34725()
 # Change sensor integration time to values between 2.4 and 614.4 milliseconds

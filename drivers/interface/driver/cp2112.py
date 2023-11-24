@@ -9,6 +9,17 @@ class I2CError(Exception):
     pass
 
 
+def _reset_error_type(new_type):
+    """Reset the error type for I2CError.
+    Args:
+        new_type: The new error type.
+    Returns:
+        The previous error type.
+    """
+    global I2CError
+    I2CError = new_type
+
+
 # Status 1 when Status 0 is 0x03
 ErrorStatus = {
     0x00: "NACK received (no device)",
@@ -268,7 +279,7 @@ class CP2112:
         except I2CError:
             return False
 
-    def bus_scan(self):
+    def bus_scan(self) -> list[int]:
         """Scan the bus for devices.
         Returns:
             A list of 7-bit addresses corresponding to the devices found.

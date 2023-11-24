@@ -7,6 +7,39 @@ from typing import Dict
 from loguru import logger
 
 
+class InterfacefIOError(Exception):
+    pass
+
+
+class InterfaceIOTimeout(Exception):
+    pass
+
+
+class InterfaceInitError(Exception):
+    pass
+
+
+class InterfaceNotFound(Exception):
+    pass
+
+
+def i2c_bus_scan() -> list[int]:
+    from . import request_interface
+
+    i2c_bus = request_interface("i2c", "bus-scanner", 0x01)
+    addrs = []
+    for addr in range(1, 128):
+        try:
+            i2c_bus.address = addr
+            if i2c_bus.check_address():
+                addrs.append(addr)
+        except InterfacefIOError:
+            pass
+    logger.info(f"I2C bus scan result: {[hex(addr) for addr in addrs]}")
+    i2c_bus.destroy()
+    return addrs
+
+
 def get_permission(dev):
     """
     Get permission to access device
@@ -61,3 +94,11 @@ def list_gpio() -> Dict[str, tuple[int, int, bool]]:
             except Exception:
                 pass
     return gpios
+
+
+class FakeLock:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass

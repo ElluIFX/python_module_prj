@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Optional, Union
 
 from loguru import logger
 
-from drivers.interface import InterfaceManager
+from drivers.interface import request_interface
 
 from .serial import SerialReaderBuffered, SerialReaderLike
 from .smbus import I2C
@@ -86,7 +86,7 @@ class ZHBaseLayer(object):
         self._print_state_flag = print_state
         self._i2c_mode = True
         if use_int:
-            self._intp = InterfaceManager.request_gpio_interface("Zero-Hat")
+            self._intp = request_interface("gpio", "Zero-Hat")
             self._intp.set_mode("INT", "input_no_pull")
         else:
             self._intp = None
@@ -116,7 +116,7 @@ class ZHBaseLayer(object):
         assert not self.running, "ZH is already running"
         self._state_update_callback = callback
         self._print_state_flag = print_state
-        self._ser = InterfaceManager.request_uart_interface("Zero-Hat", baudrate)
+        self._ser = request_interface("uart", "Zero-Hat", baudrate)
         self._reader = SerialReaderBuffered(self._ser, [0xAA, 0x55])
         self.running = True
         _listen_thread = threading.Thread(target=self._listen_serial_task)

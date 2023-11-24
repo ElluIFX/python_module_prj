@@ -1,5 +1,5 @@
 from functools import lru_cache, partial
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 from periphery import I2C, SPI, CdevGPIO, I2CError, Serial
 
@@ -9,9 +9,9 @@ from .manager import (
     I2CMessageTemplate,
     InterfaceBuilderTemplate,
     SPIInterfaceTemplate,
-    UartInterfaceTemplate,
+    UARTInterfaceTemplate,
 )
-from .utils import get_permission, list_gpio
+from .utils import InterfaceNotFound, get_permission, list_gpio
 
 
 class Periphery_I2CMessage(I2CMessageTemplate):
@@ -70,6 +70,7 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
             self._i2c = partial(_FakeI2C, self._i2c_instance)
         else:
             self._i2c = partial(I2C, devpath=devpath)
+        return super().__init__()
 
     @property
     def address(self) -> int:
@@ -113,7 +114,7 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
     def new_msg(self) -> type[Periphery_I2CMessage]:
         return Periphery_I2CMessage
 
-    def transfer_msg(self, msgs: list[Periphery_I2CMessage]) -> None:
+    def exchange_msgs(self, msgs: list[Periphery_I2CMessage]) -> None:
         with self._i2c() as i2c:
             i2c.transfer(self._addr, [msg._msg for msg in msgs])
 
@@ -130,6 +131,7 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
             self._i2c_instance.close()
 
     def reopen(self):
+        assert not self._destroyed, "Interface has been destroyed"
         if self._keep_alive:
             self._i2c_instance = I2C(self._i2c_instance.devpath)
             self._i2c = partial(_FakeI2C, self._i2c_instance)
@@ -145,10 +147,12 @@ class Periphery_I2CInterfaceBuilder(InterfaceBuilderTemplate):
         return Periphery_I2CInterface(self._devpath, address, self._keep_alive)
 
 
-class Periphery_UartInterface(UartInterfaceTemplate):
+class Periphery_UARTInterface(UARTInterfaceTemplate):
     def __init__(self, devpath: str, baudrate: int) -> None:
         self._uart = Serial(devpath, baudrate=baudrate)
         self._devpath = devpath
+        self._timeout = None
+        return super().__init__()
 
     @property
     def baudrate(self) -> int:
@@ -167,26 +171,36 @@ class Periphery_UartInterface(UartInterfaceTemplate):
         self._uart.databits = data_bits
 
     @property
-    def stop_bits(self) -> int:
-        return self._uart.stopbits
+    def stop_bits(self) -> str:
+        return str(self._uart.stopbits)
 
     @stop_bits.setter
-    def stop_bits(self, stop_bits: int) -> None:
-        self._uart.stopbits = stop_bits
+    def stop_bits(self, stop_bits: str) -> None:
+        self._uart.stopbits = int(stop_bits)
 
     @property
     def parity(self) -> str:
-        return self._uart.parity
+        remap = {"none": "N", "even": "E", "odd": "O"}
+        return remap[self._uart.parity]
 
     @parity.setter
     def parity(self, parity: str) -> None:
-        self._uart.parity = parity
+        remap = {"N": "none", "E": "even", "O": "odd"}
+        self._uart.parity = remap[parity]
+
+    @property
+    def timeout(self) -> Optional[float]:
+        return self._timeout
+
+    @timeout.setter
+    def timeout(self, timeout: Optional[float]) -> None:
+        self._timeout = timeout
 
     def write(self, data: bytes) -> None:
         self._uart.write(data)
 
-    def read(self, length: int, timeout: Optional[float] = None) -> bytes:
-        return self._uart.read(length, timeout)
+    def read(self, length: int) -> bytes:
+        return self._uart.read(length, timeout=self._timeout)
 
     def flush(self) -> None:
         self._uart.flush()
@@ -195,6 +209,7 @@ class Periphery_UartInterface(UartInterfaceTemplate):
         self._uart.close()
 
     def reopen(self):
+        assert not self._destroyed, "Interface has been destroyed"
         baudrate = self._uart.baudrate
         data_bits = self._uart.databits
         stop_bits = self._uart.stopbits
@@ -212,19 +227,20 @@ class Periphery_UartInterface(UartInterfaceTemplate):
         return self._uart.input_waiting()
 
 
-class Periphery_UartInterfaceBuilder(InterfaceBuilderTemplate):
+class Periphery_UARTInterfaceBuilder(InterfaceBuilderTemplate):
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
         self.dev_type = "uart"
 
-    def build(self, baudrate: int) -> Periphery_UartInterface:
-        return Periphery_UartInterface(self._devpath, baudrate)
+    def build(self, baudrate: int) -> Periphery_UARTInterface:
+        return Periphery_UARTInterface(self._devpath, baudrate)
 
 
 class Periphery_SPIInterface(SPIInterfaceTemplate):
     def __init__(self, devpath: str, mode: int, speed_hz: int) -> None:
         self._spi = SPI(devpath, mode=mode, max_speed=speed_hz)
         self._devpath = devpath
+        return super().__init__()
 
     @property
     def mode(self) -> int:
@@ -242,6 +258,22 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
     def speed_hz(self, speed_hz: int) -> None:
         self._spi.max_speed = speed_hz
 
+    @property
+    def byteorder(self) -> str:
+        return self._spi.bit_order
+
+    @byteorder.setter
+    def byteorder(self, byteorder: str) -> None:
+        self._spi.bit_order = byteorder
+
+    @property
+    def bits_per_word(self) -> int:
+        return self._spi.bits_per_word
+
+    @bits_per_word.setter
+    def bits_per_word(self, bits_per_word: int) -> None:
+        self._spi.bits_per_word = bits_per_word
+
     def write(self, data: bytes) -> None:
         self._spi.transfer(data)
 
@@ -255,12 +287,10 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
         self._spi.close()
 
     def reopen(self) -> None:
+        assert not self._destroyed, "Interface has been destroyed"
         mode = self._spi.mode
         speed_hz = self._spi.max_speed
         self._spi = SPI(self._devpath, mode=mode, max_speed=speed_hz)
-
-    def set_auto_cs(self, enable: bool, polarity: bool):
-        pass
 
 
 class Periphery_SPIInterfaceBuilder(InterfaceBuilderTemplate):
@@ -279,11 +309,14 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
         self._pinmap = pinmap
         self._pins: Dict[str, CdevGPIO] = {}
         self._gpios = list_gpio()
+        return super().__init__()
 
     @lru_cache(64)
     def _remap(self, pin_name: str) -> str:
         if self._pinmap is not None:
             pin_name = self._pinmap.get(pin_name, pin_name)
+        if pin_name not in self._gpios:
+            raise InterfaceNotFound(f"GPIO {pin_name} not found")
         return pin_name
 
     def get_available_pins(self) -> List[tuple[str, List[GPIOModes]]]:
@@ -309,7 +342,7 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
             self._pins.pop(pin_name)
 
     def set_mode(self, pin_name: str, mode: GPIOModes) -> None:
-        mode_map = {
+        mode_map: Dict[str, Any] = {
             "input_no_pull": {"direction": "in", "bias": "disable"},
             "input_pull_down": {"direction": "in", "bias": "pull_down"},
             "input_pull_up": {"direction": "in", "bias": "pull_up"},
