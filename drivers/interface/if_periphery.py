@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from periphery import I2C, SPI, CdevGPIO, I2CError, Serial
 
+from .errors import InterfaceNotFound
 from .manager import BaseInterfaceBuilder
 from .templates import (
     FAKE_GPIO_NAME,
@@ -13,7 +14,7 @@ from .templates import (
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
-from .utils import InterfaceNotFound, get_permission, list_gpio
+from .utils import get_permission, list_gpio
 
 
 class Periphery_I2CMessage(I2CMessageTemplate):
@@ -291,7 +292,11 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
         self._spi.bits_per_word = bits_per_word
 
     def write(self, data: bytes) -> None:
-        self._spi.transfer(data)
+        if len(data) > 4096:
+            for i in range(0, len(data), 4096):
+                self._spi.transfer(data[i : i + 4096])
+        else:
+            self._spi.transfer(data)
 
     def read(self, length: int) -> bytes:
         return bytes(self._spi.transfer(bytes(length)))
@@ -347,6 +352,7 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
             raise InterfaceNotFound(f"GPIO {pin_name} not found")
         return pin_name
 
+    @lru_cache(1)
     def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
         return {
             self._pinmap_inv.get(name, name): [

@@ -3,6 +3,12 @@ from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
 
 from .driver.ch347 import CH347
+from .errors import (
+    InterfacefIOError,
+    InterfaceInitError,
+    InterfaceIOTimeout,
+    InterfaceNotFound,
+)
 from .manager import BaseInterfaceBuilder
 from .templates import (
     FAKE_GPIO_NAME,
@@ -13,13 +19,7 @@ from .templates import (
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
-from .utils import (
-    FakeLock,
-    InterfacefIOError,
-    InterfaceInitError,
-    InterfaceIOTimeout,
-    InterfaceNotFound,
-)
+from .utils import FakeLock
 
 _dev: Optional[CH347] = None  # device should be opened only once
 _lock = FakeLock()

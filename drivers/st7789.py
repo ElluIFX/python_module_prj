@@ -101,15 +101,14 @@ class ST7789(object):
         self._pin_rst.set_mode("output_push_pull")
         self._pin_dc.write(True)  # DC keeps in high
         self._pin_rst.write(True)  # RST keeps in high
-
-        self._pin_bk = self._gpio.get_pin("BK")
-        self._bk_pwm_control = "pwm_output" in self._pin_bk.get_available_pinmode()
+        self._pin_bl = self._gpio.get_pin("BL")
+        self._bk_pwm_control = "pwm_output" in self._pin_bl.get_available_pinmode()
         if self._bk_pwm_control:
-            self._pin_bk.set_mode("pwm_output")
-            self._pin_bk.write_pwm(freq=1000, duty=0, polarity=True)
+            self._pin_bl.set_mode("pwm_output")
+            self._pin_bl.write_pwm(freq=1000, duty=0, polarity=True)
         else:
-            self._pin_bk.set_mode("output_push_pull")
-            self._pin_bk.write(False)  # BK keeps in low
+            self._pin_bl.set_mode("output_push_pull")
+            self._pin_bl.write(False)  # BK keeps in low
         self._width = width
         self._height = height
         self._invert = invert
@@ -139,9 +138,9 @@ class ST7789(object):
         otherwise can only control on or off.
         """
         if self._bk_pwm_control:
-            self._pin_bk.write_pwm_duty(brightness)
+            self._pin_bl.write_pwm_duty(brightness)
         else:
-            self._pin_bk.write(brightness > 0)
+            self._pin_bl.write(brightness > 0)
 
     def _command(self, data):
         self._pin_dc.write(False)

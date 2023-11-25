@@ -6,21 +6,7 @@ from typing import Dict
 
 from loguru import logger
 
-
-class InterfacefIOError(Exception):
-    pass
-
-
-class InterfaceIOTimeout(Exception):
-    pass
-
-
-class InterfaceInitError(Exception):
-    pass
-
-
-class InterfaceNotFound(Exception):
-    pass
+from .errors import InterfacefIOError
 
 
 def i2c_bus_scan() -> list[int]:

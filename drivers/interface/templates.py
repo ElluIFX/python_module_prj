@@ -3,6 +3,8 @@ from typing import Callable, Dict, List, Literal, Optional, Union, final
 
 from loguru import logger
 
+from .errors import InterfaceNotFound
+
 __all__ = [
     "I2CMessageTemplate",
     "I2CInterfaceTemplate",
@@ -20,6 +22,8 @@ __all__ = [
 
 
 class BaseInterfaceTemplate:
+    _destroyed = True
+
     def __init__(self) -> None:
         self._destroyed = False  # prevent double destroy
         self._on_destroy: list[Callable[[BaseInterfaceTemplate], None]] = []
@@ -529,23 +533,30 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
         """
         raise NotImplementedError()
 
+    @final
     def get_pin(self, pin_name: str) -> "GPIOPinInstance":
         """
         Return a GPIO instance
         """
-        return GPIOPinInstance(pin_name, self)
+        if pin_name not in self.get_available_pins():
+            raise InterfaceNotFound(f"Pin {pin_name} not available")
+
+        class _GPIOPinInstance:
+            def __init__(
+                self, pin_name: str, interface: "GPIOInterfaceTemplate"
+            ) -> None:
+                self._pinname = pin_name
+                self._interface = interface
+
+            def __getattr__(self, name: str):
+                return lambda *args, **kwargs: getattr(self._interface, name)(
+                    self._pinname, *args, **kwargs
+                )
+
+        return _GPIOPinInstance(pin_name, self)
 
 
 class GPIOPinInstance:
-    def __init__(self, pin_name: str, interface: "GPIOInterfaceTemplate") -> None:
-        self._name = pin_name
-        self._interface = interface
-
-    def __getattr__(self, name: str):
-        return lambda *args, **kwargs: getattr(self._interface, name)(
-            self._name, *args, **kwargs
-        )
-
     def set_mode(self, mode: GpioModes_T):
         """
         Set the mode of this pin

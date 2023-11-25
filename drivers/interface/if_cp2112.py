@@ -3,6 +3,7 @@ from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
 
 from .driver.cp2112 import CP2112, _reset_error_type
+from .errors import InterfacefIOError, InterfaceNotFound
 from .manager import BaseInterfaceBuilder
 from .templates import (
     FAKE_GPIO_NAME,
@@ -11,7 +12,7 @@ from .templates import (
     I2CInterfaceTemplate,
     I2CMessageTemplate,
 )
-from .utils import FakeLock, InterfacefIOError, InterfaceNotFound
+from .utils import FakeLock
 
 _dev: Optional[CP2112] = None  # hid device should be opened only once
 _lock = FakeLock()
