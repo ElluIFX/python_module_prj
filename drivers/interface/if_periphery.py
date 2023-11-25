@@ -3,11 +3,13 @@ from typing import Any, Dict, List, Optional, Union
 
 from periphery import I2C, SPI, CdevGPIO, I2CError, Serial
 
-from .manager import (
+from .manager import BaseInterfaceBuilder
+from .templates import (
+    FAKE_GPIO_NAME,
     GPIOInterfaceTemplate,
+    GpioModes_T,
     I2CInterfaceTemplate,
     I2CMessageTemplate,
-    InterfaceBuilderTemplate,
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
@@ -137,7 +139,7 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
             self._i2c = partial(_FakeI2C, self._i2c_instance)
 
 
-class Periphery_I2CInterfaceBuilder(InterfaceBuilderTemplate):
+class Periphery_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, devpath: str, keep_alive: bool = False) -> None:
         self._devpath = devpath
         self._keep_alive = keep_alive
@@ -149,7 +151,14 @@ class Periphery_I2CInterfaceBuilder(InterfaceBuilderTemplate):
 
 class Periphery_UARTInterface(UARTInterfaceTemplate):
     def __init__(self, devpath: str, baudrate: int) -> None:
-        self._uart = Serial(devpath, baudrate=baudrate)
+        try:
+            self._uart = Serial(devpath, baudrate=baudrate)
+        except IOError as e:
+            if e.errno == 13:
+                get_permission(devpath)
+                self._uart = Serial(devpath, baudrate=baudrate)
+            else:
+                raise e
         self._devpath = devpath
         self._timeout = None
         return super().__init__()
@@ -227,7 +236,7 @@ class Periphery_UARTInterface(UARTInterfaceTemplate):
         return self._uart.input_waiting()
 
 
-class Periphery_UARTInterfaceBuilder(InterfaceBuilderTemplate):
+class Periphery_UARTInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
         self.dev_type = "uart"
@@ -238,7 +247,14 @@ class Periphery_UARTInterfaceBuilder(InterfaceBuilderTemplate):
 
 class Periphery_SPIInterface(SPIInterfaceTemplate):
     def __init__(self, devpath: str, mode: int, speed_hz: int) -> None:
-        self._spi = SPI(devpath, mode=mode, max_speed=speed_hz)
+        try:
+            self._spi = SPI(devpath, mode=mode, max_speed=speed_hz)
+        except IOError as e:
+            if e.errno == 13:
+                get_permission(devpath)
+                self._spi = SPI(devpath, mode=mode, max_speed=speed_hz)
+            else:
+                raise e
         self._devpath = devpath
         return super().__init__()
 
@@ -290,10 +306,18 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
         assert not self._destroyed, "Interface has been destroyed"
         mode = self._spi.mode
         speed_hz = self._spi.max_speed
-        self._spi = SPI(self._devpath, mode=mode, max_speed=speed_hz)
+        byteorder = self._spi.bit_order
+        bits_per_word = self._spi.bits_per_word
+        self._spi = SPI(
+            self._devpath,
+            mode=mode,
+            max_speed=speed_hz,
+            bit_order=byteorder,
+            bits_per_word=bits_per_word,
+        )
 
 
-class Periphery_SPIInterfaceBuilder(InterfaceBuilderTemplate):
+class Periphery_SPIInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
         self.dev_type = "spi"
@@ -303,12 +327,16 @@ class Periphery_SPIInterfaceBuilder(InterfaceBuilderTemplate):
 
 
 class Periphery_GPIOInterface(GPIOInterfaceTemplate):
-    GPIOModes = GPIOInterfaceTemplate.GPIOModes
-
-    def __init__(self, pinmap: Optional[Dict[str, str]]) -> None:
-        self._pinmap = pinmap
+    def __init__(
+        self,
+        pinmap: Optional[Dict[str, str]],
+        modemap: Optional[Dict[str, GpioModes_T]],
+    ) -> None:
+        self._pinmap = pinmap if pinmap is not None else {}
+        self._modemap = modemap if modemap is not None else {}
         self._pins: Dict[str, CdevGPIO] = {}
         self._gpios = list_gpio()
+        self._pinmap_inv = {v: k for k, v in self._pinmap.items()}
         return super().__init__()
 
     @lru_cache(64)
@@ -319,29 +347,28 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
             raise InterfaceNotFound(f"GPIO {pin_name} not found")
         return pin_name
 
-    def get_available_pins(self) -> List[tuple[str, List[GPIOModes]]]:
-        return [
-            (
-                name,
-                [
-                    "input_no_pull",
-                    "input_pull_down",
-                    "input_pull_up",
-                    "output_open_drain",
-                    "output_open_source",
-                    "output_push_pull",
-                ],
-            )
+    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+        return {
+            self._pinmap_inv.get(name, name): [
+                "input_no_pull",
+                "input_pull_down",
+                "input_pull_up",
+                "output_open_drain",
+                "output_open_source",
+                "output_push_pull",
+            ]
             for name in self._gpios.keys()
-        ]
+        }
 
     def free(self, pin_name: str) -> None:
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
         if pin_name in self._pins:
             self._pins[pin_name].close()
             self._pins.pop(pin_name)
 
-    def set_mode(self, pin_name: str, mode: GPIOModes) -> None:
+    def set_mode(self, pin_name: str, mode: GpioModes_T) -> None:
         mode_map: Dict[str, Any] = {
             "input_no_pull": {"direction": "in", "bias": "disable"},
             "input_pull_down": {"direction": "in", "bias": "pull_down"},
@@ -351,9 +378,14 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
             "output_push_pull": {"direction": "out", "drive": "default"},
         }
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
         if pin_name in self._pins:
             self._pins[pin_name].close()
             self._pins.pop(pin_name)
+        if pin_name in self._modemap:
+            if self._modemap[pin_name].split("_")[0] == mode.split("_")[0]:
+                mode = self._modemap[pin_name]
         chip, offset, used = self._gpios[pin_name]
         # assert not used, f"GPIO {pin_name} is already used"
         try:
@@ -366,14 +398,20 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
                 self._pins[pin_name] = CdevGPIO(
                     path=f"/dev/gpiochip{chip}", line=offset, **mode_map[mode]
                 )
+            else:
+                raise e
 
     def write(self, pin_name: str, value: bool):
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
         assert pin_name in self._pins, f"GPIO {pin_name} not initialized"
         self._pins[pin_name].write(value)
 
     def read(self, pin_name: str) -> bool:
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return False
         assert pin_name in self._pins, f"GPIO {pin_name} not initialized"
         return self._pins[pin_name].read()
 
@@ -383,10 +421,15 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
         self._pins.clear()
 
 
-class Periphery_GPIOInterfaceBuilder(InterfaceBuilderTemplate):
-    def __init__(self, pinmap: Optional[Dict[str, str]] = None) -> None:
+class Periphery_GPIOInterfaceBuilder(BaseInterfaceBuilder):
+    def __init__(
+        self,
+        pinmap: Optional[Dict[str, str]] = None,
+        modemap: Optional[Dict[str, GpioModes_T]] = None,
+    ) -> None:
         self._pinmap = pinmap
+        self._modemap = modemap
         self.dev_type = "gpio"
 
     def build(self) -> Periphery_GPIOInterface:
-        return Periphery_GPIOInterface(self._pinmap)
+        return Periphery_GPIOInterface(self._pinmap, self._modemap)

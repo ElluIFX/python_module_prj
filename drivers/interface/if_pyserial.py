@@ -2,12 +2,22 @@ from typing import Optional
 
 from serial import Serial
 
-from .manager import InterfaceBuilderTemplate, UARTInterfaceTemplate
+from .manager import BaseInterfaceBuilder
+from .templates import UARTInterfaceTemplate
+from .utils import get_permission
 
 
 class PySerial_UARTInterface(UARTInterfaceTemplate):
     def __init__(self, port: str, baudrate: int) -> None:
-        self._ser = Serial(port, baudrate, timeout=0, write_timeout=0)
+        try:
+            self._ser = Serial(port, baudrate, timeout=0, write_timeout=0)
+        except IOError as e:
+            if e.errno == 13:
+                get_permission(port)
+                self._ser = Serial(port, baudrate, timeout=0, write_timeout=0)
+            else:
+                raise e
+
         self._port = port
         self._baudrate = baudrate
         try:
@@ -77,7 +87,7 @@ class PySerial_UARTInterface(UARTInterfaceTemplate):
         self._ser.parity = parity
 
 
-class PySerial_UARTInterfaceBuilder(InterfaceBuilderTemplate):
+class PySerial_UARTInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, port: str) -> None:
         self._port = port
         self.dev_type = "uart"

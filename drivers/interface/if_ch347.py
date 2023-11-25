@@ -1,15 +1,25 @@
+from functools import lru_cache
 from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
 
 from .driver.ch347 import CH347
-from .manager import (
+from .manager import BaseInterfaceBuilder
+from .templates import (
+    FAKE_GPIO_NAME,
+    GPIOInterfaceTemplate,
+    GpioModes_T,
     I2CInterfaceTemplate,
     I2CMessageTemplate,
-    InterfaceBuilderTemplate,
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
-from .utils import FakeLock, InterfacefIOError, InterfaceInitError, InterfaceIOTimeout
+from .utils import (
+    FakeLock,
+    InterfacefIOError,
+    InterfaceInitError,
+    InterfaceIOTimeout,
+    InterfaceNotFound,
+)
 
 _dev: Optional[CH347] = None  # device should be opened only once
 _lock = FakeLock()
@@ -127,7 +137,7 @@ class CH347_I2CInterface(I2CInterfaceTemplate):
                         raise InterfacefIOError("I2C write failed")
 
 
-class CH347_I2CInterfaceBuilder(InterfaceBuilderTemplate):
+class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
@@ -269,7 +279,7 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
         self._reset()
 
 
-class CH347_UARTInterfaceBuilder(InterfaceBuilderTemplate):
+class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, uart_index: int = 0, add_lock=True) -> None:
         global _dev
         if _dev is None:
@@ -442,7 +452,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
             return bytes(ret)
 
 
-class CH347_SPIInterfaceBuilder(InterfaceBuilderTemplate):
+class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         auto_cs: bool = False,
@@ -474,3 +484,114 @@ class CH347_SPIInterfaceBuilder(InterfaceBuilderTemplate):
             mode,
             speed_hz,
         )
+
+
+CH347AvailablePins = Literal[
+    "GPIO0", "GPIO1", "GPIO2", "GPIO3", "GPIO4", "GPIO5", "GPIO6", "GPIO7"
+]
+
+
+def _SET_BIT(x, bit):
+    return x | 1 << bit
+
+
+def _CLEAR_BIT(x, bit):
+    return x & ~(1 << bit)
+
+
+class CH347_GPIOInterface(GPIOInterfaceTemplate):
+    def __init__(self, pinmap: Optional[Dict[str, CH347AvailablePins]]) -> None:
+        self._pinmap = pinmap if pinmap is not None else {}
+        self._pinmap_inv = {v: k for k, v in self._pinmap.items()}
+        self._gpio_enable = 0
+        self._gpio_dir = 0
+        self._gpio_out = 0
+        return super().__init__()
+
+    @lru_cache(64)
+    def _remap(self, pin_name: str) -> str:
+        pin_name = self._pinmap.get(pin_name, pin_name)
+        if pin_name not in [f"GPIO{i}" for i in range(8)]:
+            raise InterfaceNotFound(f"Pin {pin_name} not found")
+        return pin_name
+
+    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+        lst: Dict[str, List[GpioModes_T]] = {
+            f"GPIO{i}": [
+                "input_no_pull",
+                "output_push_pull",
+            ]
+            for i in range(8)
+        }
+        return {self._pinmap_inv.get(k, k): v for k, v in lst.items()}
+
+    def set_mode(self, pin_name: str, mode: GpioModes_T):
+        assert _dev is not None
+        pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
+        offset = int(pin_name[-1])
+        if mode == "none":
+            self._gpio_enable = _CLEAR_BIT(self._gpio_enable, offset)
+        else:
+            self._gpio_enable = _SET_BIT(self._gpio_enable, offset)
+            if mode == "input_no_pull":
+                self._gpio_dir = _CLEAR_BIT(self._gpio_dir, offset)
+            elif mode == "output_push_pull":
+                self._gpio_dir = _SET_BIT(self._gpio_dir, offset)
+            else:
+                raise ValueError(f"Invalid GPIO mode {mode}")
+            self._gpio_out = _CLEAR_BIT(self._gpio_out, offset)
+        with _lock:
+            if not _dev.gpio_set(self._gpio_enable, self._gpio_dir, self._gpio_out):
+                raise InterfacefIOError("GPIO set config failed")
+
+    def write(self, pin_name: str, level: bool):
+        assert _dev is not None
+        pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
+        offset = int(pin_name[-1])
+        if level:
+            self._gpio_out = _SET_BIT(self._gpio_out, offset)
+        else:
+            self._gpio_out = _CLEAR_BIT(self._gpio_out, offset)
+        with _lock:
+            if not _dev.gpio_set(self._gpio_enable, self._gpio_dir, self._gpio_out):
+                raise InterfacefIOError("GPIO write failed")
+
+    def read(self, pin_name: str) -> bool:
+        assert _dev is not None
+        pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return False
+        offset = int(pin_name[-1])
+        with _lock:
+            ret = _dev.gpio_get()
+            if ret is None:
+                raise InterfacefIOError("GPIO read failed")
+        _, rd = ret
+        return bool(rd & (1 << offset))
+
+    def close(self):
+        if _dev is not None:
+            _dev.gpio_set(0, 0, 0)
+
+
+class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):
+    def __init__(
+        self, pinmap: Optional[Dict[str, CH347AvailablePins]] = None, add_lock=True
+    ) -> None:
+        global _dev
+        if _dev is None:
+            _dev = CH347()
+            if not _dev.open_device():
+                raise InterfaceInitError("CH347 open failed")
+            if add_lock:
+                global _lock
+                _lock = Lock()
+        self._pinmap = pinmap
+        self.dev_type = "gpio"
+
+    def build(self) -> CH347_GPIOInterface:
+        return CH347_GPIOInterface(self._pinmap)

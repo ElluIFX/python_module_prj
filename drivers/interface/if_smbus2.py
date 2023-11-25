@@ -3,7 +3,9 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 from smbus2 import SMBus, i2c_msg
 
-from .manager import I2CInterfaceTemplate, I2CMessageTemplate, InterfaceBuilderTemplate
+from .manager import BaseInterfaceBuilder
+from .templates import I2CInterfaceTemplate, I2CMessageTemplate
+from .utils import get_permission
 
 
 def build_msg(addr) -> type["SMBus2_I2CMessage"]:
@@ -65,10 +67,22 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
         self._address = address
         self._keep_alive = keep_alive
         self._bus_num = bus
+        try:
+            self._bus_instance = SMBus(bus)
+        except IOError as e:
+            if e.errno == 13:
+                if isinstance(bus, str):
+                    get_permission(bus)
+                else:
+                    get_permission(f"/dev/i2c-{bus}")
+                self._bus_instance = SMBus(bus)
+            else:
+                raise e
         if keep_alive:
             self._bus_instance = SMBus(bus)
             self._bus = partial(_FakeSMBus, self._bus_instance)
         else:
+            self._bus_instance.close()
             self._bus = partial(SMBus, bus=bus)
         return super().__init__()
 
@@ -132,7 +146,7 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
             self._bus = partial(_FakeSMBus, self._bus_instance)
 
 
-class SMBus2_I2CInterfaceBuilder(InterfaceBuilderTemplate):
+class SMBus2_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, bus: Union[int, str], keep_alive: bool = False):
         self._bus = bus
         self._keep_alive = keep_alive

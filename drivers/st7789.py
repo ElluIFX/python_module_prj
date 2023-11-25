@@ -1,41 +1,15 @@
-import subprocess as sp
 import time
 
 import cv2
 import numpy as np
-import spidev
-from periphery import GPIO
-from periphery.spi import SPI
 
+from .interface import request_interface
 
-def find_gpio(name: str):
-    # use gpiofind to find the gpiochip
-    cmd = f"gpiofind GPIO{name}"
-    ret = sp.getoutput(cmd)
-    if ret == "":
-        raise Exception(f"GPIO {name} not found")
-    chip, offset = ret.split(" ")
-    return int(chip[-1]), int(offset)
-
-
-def get_gpio(name):
-    chip, offset = find_gpio(name)
-    if name in ("C_7", "H_8"):
-        return GPIO(f"/dev/gpiochip{chip}", offset, "out", drive="open_drain")
-    return GPIO(f"/dev/gpiochip{chip}", offset, "out")
-
-
-class IO:
-    def __init__(self, name):
-        self._gpio = get_gpio(name)
-        self._name = name
-
-    def write(self, value):
-        self._gpio.write(value)
-        time.sleep(0.01)
-        assert (
-            self._gpio.read() == value
-        ), f"GPIO {self._name}: {self._gpio.read()} != {value}"
+# def get_gpio(name):
+#     chip, offset = find_gpio(name)
+#     if name in ("C_7", "H_8"):
+#         return GPIO(f"/dev/gpiochip{chip}", offset, "out", drive="open_drain")
+#     return GPIO(f"/dev/gpiochip{chip}", offset, "out")
 
 
 class _CMD:
@@ -105,20 +79,12 @@ class ST7789(object):
 
     def __init__(
         self,
-        spi_channel=1,
-        spi_port=0,
-        pin_dc="X_9",
-        pin_bk="X_8",
-        pin_rst="C_7",
         width=320,
         height=172,
         invert=True,
         bgr=False,
         fps=60,
         rotation=90,
-        spi_speed_hz=10000000000,
-        bk_pwm_control=False,
-        bk_pwm_port=(4, 0),
         offset_left=0,
         offset_top=34,
     ):
@@ -126,30 +92,24 @@ class ST7789(object):
         Create an instance of the ST7789V3 display using SPI communication.
         """
 
-        self._spi = spidev.SpiDev(spi_channel, spi_port)
-        self._spi.mode = 0b00
-        self._spi.max_speed_hz = spi_speed_hz
+        self._spi = request_interface("spi", "ST7789", 0, 10000000)
+        self._gpio = request_interface("gpio", "ST7789")
 
-        # self._spi = mraa.Spi(spi_channel)
-        # self._spi.frequency(spi_speed_hz)
-        # self._spi.mode(0)
-
-        # self._spi = SPI(
-        #     f"/dev/spidev{spi_channel}.{spi_port}", mode=0, max_speed=spi_speed_hz
-        # )
-
-        self._pin_dc = IO(pin_dc)
-        self._pin_rst = IO(pin_rst)
+        self._pin_dc = self._gpio.get_pin("DC")
+        self._pin_rst = self._gpio.get_pin("RST")
+        self._pin_dc.set_mode("output_push_pull")
+        self._pin_rst.set_mode("output_push_pull")
         self._pin_dc.write(True)  # DC keeps in high
         self._pin_rst.write(True)  # RST keeps in high
 
-        self._bk_pwm_control = bk_pwm_control
+        self._pin_bk = self._gpio.get_pin("BK")
+        self._bk_pwm_control = "pwm_output" in self._pin_bk.get_available_pinmode()
         if self._bk_pwm_control:
-            pass
+            self._pin_bk.set_mode("pwm_output")
+            self._pin_bk.write_pwm(freq=1000, duty=0, polarity=True)
         else:
-            self._pin_bk = IO(pin_bk)
+            self._pin_bk.set_mode("output_push_pull")
             self._pin_bk.write(False)  # BK keeps in low
-
         self._width = width
         self._height = height
         self._invert = invert
@@ -170,16 +130,7 @@ class ST7789(object):
         self._last_img = None
 
     def _send(self, data):
-        self._spi.writebytes2(data)
-
-        # data = bytearray(data)
-        # self._spi.write(data)
-        # for i in range(0, len(data), 4096):
-        #     self._spi.write(data[i : i + 4096])
-
-        # data = bytearray(data)
-        # for i in range(0, len(data), 4096):
-        #     self._spi.transfer(data[i : i + 4096])
+        self._spi.write(bytes(data))
 
     def set_brightness(self, brightness: float):
         """
@@ -188,7 +139,7 @@ class ST7789(object):
         otherwise can only control on or off.
         """
         if self._bk_pwm_control:
-            pass
+            self._pin_bk.write_pwm_duty(brightness)
         else:
             self._pin_bk.write(brightness > 0)
 
@@ -408,9 +359,9 @@ class ST7789(object):
         if len(non_black_pixels) > 0:
             x1 = np.min(non_black_pixels[:, 1])
             y1 = np.min(non_black_pixels[:, 0])
-            x2 = np.max(non_black_pixels[:, 1]) + 1
-            y2 = np.max(non_black_pixels[:, 0]) + 1
-            return int(x1), int(y1), int(x2), int(y2)
+            x2 = np.max(non_black_pixels[:, 1])
+            y2 = np.max(non_black_pixels[:, 0])
+            return int(x1), int(y1), int(x2) + 1, int(y2) + 1
         else:
             return None
 

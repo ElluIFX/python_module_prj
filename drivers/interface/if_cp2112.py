@@ -1,13 +1,15 @@
 from functools import cached_property, lru_cache
 from threading import Lock
-from typing import Dict, List, Literal, Optional, Tuple, Union
+from typing import Dict, List, Literal, Optional, Union
 
 from .driver.cp2112 import CP2112, _reset_error_type
-from .manager import (
+from .manager import BaseInterfaceBuilder
+from .templates import (
+    FAKE_GPIO_NAME,
     GPIOInterfaceTemplate,
+    GpioModes_T,
     I2CInterfaceTemplate,
     I2CMessageTemplate,
-    InterfaceBuilderTemplate,
 )
 from .utils import FakeLock, InterfacefIOError, InterfaceNotFound
 
@@ -115,7 +117,7 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
                     _dev.write_i2c(self._addr, msg._data)
 
 
-class CP2112_I2CInterfaceBuilder(InterfaceBuilderTemplate):
+class CP2112_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, clock=400000, retry=3, txrx_leds=True, add_lock=True) -> None:
         global _dev
         if _dev is None:
@@ -137,65 +139,57 @@ def _CLEAR_BIT(x, bit):
     return x & ~(1 << bit)
 
 
-CP2112_GPIO_LIST = Literal[
+CP2112AvailablePins = Literal[
     "Pin_0", "Pin_1", "Pin_2", "Pin_3", "Pin_4", "Pin_5", "Pin_6", "Pin_7"
 ]
 
 
 class CP2112_GPIOInterface(GPIOInterfaceTemplate):
-    GPIOModes = GPIOInterfaceTemplate.GPIOModes
-
-    def __init__(self, pinmap: Optional[Dict[str, CP2112_GPIO_LIST]]) -> None:
-        self._pinmap = pinmap
+    def __init__(self, pinmap: Optional[Dict[str, CP2112AvailablePins]]) -> None:
+        self._pinmap = pinmap if pinmap is not None else {}
+        self._pinmap_inv = {v: k for k, v in self._pinmap.items()}
         return super().__init__()
 
     @lru_cache(64)
     def _remap(self, pin_name: str) -> str:
-        if self._pinmap is not None:
-            pin_name = self._pinmap.get(pin_name, pin_name)
+        pin_name = self._pinmap.get(pin_name, pin_name)
         if pin_name not in [f"Pin_{i}" for i in range(8)]:
             raise InterfaceNotFound(f"Pin {pin_name} not found")
         return pin_name
 
-    def get_available_pins(self) -> List[Tuple[str, List[GPIOModes]]]:
-        return [
-            (
-                "Pin_0",
-                [
-                    "input_no_pull",
-                    "output_open_drain",
-                    "output_push_pull",
-                    "special_func",
-                ],
-            ),
-            (
-                "Pin_1",
-                [
-                    "input_no_pull",
-                    "output_open_drain",
-                    "output_push_pull",
-                    "special_func",
-                ],
-            ),
-            ("Pin_2", ["input_no_pull", "output_open_drain", "output_push_pull"]),
-            ("Pin_3", ["input_no_pull", "output_open_drain", "output_push_pull"]),
-            ("Pin_4", ["input_no_pull", "output_open_drain", "output_push_pull"]),
-            ("Pin_5", ["input_no_pull", "output_open_drain", "output_push_pull"]),
-            ("Pin_6", ["input_no_pull", "output_open_drain", "output_push_pull"]),
-            (
-                "Pin_7",
-                [
-                    "input_no_pull",
-                    "output_open_drain",
-                    "output_push_pull",
-                    "output_pwm",
-                ],
-            ),
-        ]
+    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+        lst: Dict[str, List[GpioModes_T]] = {
+            "Pin_0": [
+                "input_no_pull",
+                "output_open_drain",
+                "output_push_pull",
+                "special_func",
+            ],
+            "Pin_1": [
+                "input_no_pull",
+                "output_open_drain",
+                "output_push_pull",
+                "special_func",
+            ],
+            "Pin_2": ["input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_3": ["input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_4": ["input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_5": ["input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_6": ["input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_7": [
+                "input_no_pull",
+                "output_open_drain",
+                "output_push_pull",
+                "pwm_output",
+            ],
+        }
+        return {self._pinmap_inv.get(k, k): v for k, v in lst.items()}
 
-    def set_mode(self, pin_name: str, mode: GPIOModes):
+    def set_mode(self, pin_name: str, mode: GpioModes_T):
         assert _dev is not None
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
         offset = int(pin_name[-1])
         with _lock:
             dir, push_pull, special, clock_divider = _dev.get_gpio_config()
@@ -228,6 +222,8 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def write_pwm_freq(self, pin_name: str, freq: int):
         assert _dev is not None
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
         assert pin_name == "Pin_7", "Only Pin_7 supports PWM"
         # 0=48 MHz; Otherwise freq=(48 MHz)/(2*clock_divider)
         if freq >= 48000000:
@@ -244,6 +240,8 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def write(self, pin_name: str, value: bool):
         assert _dev is not None
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return
         offset = int(pin_name[-1])
         with _lock:
             _dev.set_pin(offset, 1 if value else 0)
@@ -251,14 +249,16 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def read(self, pin_name: str) -> bool:
         assert _dev is not None
         pin_name = self._remap(pin_name)
+        if pin_name == FAKE_GPIO_NAME:
+            return False
         offset = int(pin_name[-1])
         with _lock:
             return _dev.get_pin(offset)
 
 
-class CP2112_GPIOInterfaceBuilder(InterfaceBuilderTemplate):
+class CP2112_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
-        self, pinmap: Optional[Dict[str, CP2112_GPIO_LIST]] = None, add_lock=True
+        self, pinmap: Optional[Dict[str, CP2112AvailablePins]] = None, add_lock=True
     ) -> None:
         global _dev
         if _dev is None:
