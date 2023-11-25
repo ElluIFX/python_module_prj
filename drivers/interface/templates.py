@@ -541,7 +541,7 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
         if pin_name not in self.get_available_pins():
             raise InterfaceNotFound(f"Pin {pin_name} not available")
 
-        class _GPIOPinInstance:
+        class _GPIOPinWrapper:
             def __init__(
                 self, pin_name: str, interface: "GPIOInterfaceTemplate"
             ) -> None:
@@ -553,7 +553,7 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
                     self._pinname, *args, **kwargs
                 )
 
-        return _GPIOPinInstance(pin_name, self)
+        return _GPIOPinWrapper(pin_name, self)  # type: ignore
 
 
 class GPIOPinInstance:

@@ -1,4 +1,4 @@
-import spidev
+import spidev  # type: ignore
 
 from .manager import BaseInterfaceBuilder
 from .templates import SPIInterfaceTemplate
