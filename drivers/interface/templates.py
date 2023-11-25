@@ -541,19 +541,13 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
         if pin_name not in self.get_available_pins():
             raise InterfaceNotFound(f"Pin {pin_name} not available")
 
-        class _GPIOPinWrapper:
-            def __init__(
-                self, pin_name: str, interface: "GPIOInterfaceTemplate"
-            ) -> None:
-                self._pinname = pin_name
-                self._interface = interface
-
-            def __getattr__(self, name: str):
-                return lambda *args, **kwargs: getattr(self._interface, name)(
-                    self._pinname, *args, **kwargs
+        class GPIOPinWrapper(GPIOPinInstance):
+            def __getattribute__(_, name: str):
+                return lambda *args, **kwargs: self.__getattribute__(name)(
+                    pin_name, *args, **kwargs
                 )
 
-        return _GPIOPinWrapper(pin_name, self)  # type: ignore
+        return GPIOPinWrapper()
 
 
 class GPIOPinInstance:
