@@ -1,4 +1,5 @@
 from functools import cached_property
+from io import BufferedRWPair, TextIOWrapper
 from typing import Callable, Dict, List, Literal, Optional, Union, final
 
 from loguru import logger
@@ -347,17 +348,52 @@ class UARTInterfaceTemplate(BaseInterfaceTemplate):
         """
         raise NotImplementedError()
 
-    def flush(self):
-        """
-        Flush the UART bus buffer
-        """
-        raise NotImplementedError()
-
-    def read(self, length: int) -> bytes:
+    def read(self, length: int = 1) -> bytes:
         """
         Read data from the UART bus
         """
         raise NotImplementedError()
+
+    def readline(self, length: int = -1) -> bytes:
+        """
+        Read a line from the UART bus
+        """
+        buf = bytearray()
+        while True:
+            buf.extend(self.read(1))
+            if (length > 0 and len(buf) >= length) or (len(buf) > 0 and buf[-1] == 10):
+                break
+        return bytes(buf)
+
+    def flush(self):
+        """
+        Flush the UART bus buffer
+        """
+        ...
+
+    def readinto(self, buf: bytearray) -> int:
+        """
+        Read data from the UART bus into buffer
+        """
+        data = self.read(len(buf))
+        buf[: len(data)] = data
+        return len(data)
+
+    @final
+    def textio_wrapper(self, encoding: Optional[str] = None) -> TextIOWrapper:
+        """
+        Return a TextIOWrapper of the UART bus
+        """
+        self.closed = False
+        self.readable = lambda: True
+        self.writable = lambda: True
+        self.seekable = lambda: False
+        return TextIOWrapper(
+            BufferedRWPair(self, self),  # type: ignore
+            write_through=True,
+            line_buffering=True,
+            encoding=encoding,
+        )
 
     @property
     def in_waiting(self) -> int:
@@ -542,7 +578,7 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
             raise InterfaceNotFound(f"Pin {pin_name} not available")
 
         class GPIOPinWrapper(GPIOPinInstance):
-            def __getattribute__(_, name: str):
+            def __getattribute__(_self, name: str):
                 return lambda *args, **kwargs: self.__getattribute__(name)(
                     pin_name, *args, **kwargs
                 )

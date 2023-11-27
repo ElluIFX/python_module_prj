@@ -1,3 +1,4 @@
+import time
 from functools import lru_cache
 from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
@@ -174,7 +175,8 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
         self._bytesize: Literal[5, 6, 7, 8, 16] = 8
         self._parity: Literal[0, 1, 2, 3, 4] = 0
         self._stopbits: Literal[0, 1, 2] = 0
-        self._timeout = 0xFFFFFFFF
+        self._timeout = None
+        self._rbuf = bytearray()
         assert _dev is not None
         if not _dev.open_uart(self._idx):
             raise InterfaceInitError("CH347 open failed")
@@ -189,7 +191,6 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
             bytesize=self._bytesize,
             parity=self._parity,
             stopbits=self._stopbits,
-            bytetimout=self._timeout,
         ):
             raise InterfaceIOTimeout("UART Set params failed")
 
@@ -235,15 +236,11 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
 
     @property
     def timeout(self) -> Optional[float]:
-        return self._timeout / 1000 if self._timeout != 0xFFFFFFFF else None
+        return self._timeout
 
     @timeout.setter
     def timeout(self, timeout: Optional[float]):
-        if timeout is None:
-            self._timeout = 0xFFFFFFFF
-        else:
-            self._timeout = int(timeout * 1000)
-        self._reset()
+        self._timeout = timeout
 
     def write(self, data: Union[bytes, List[int]]):
         assert _dev is not None
@@ -251,22 +248,54 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
             if not _dev.uart_write(self._idx, bytes(data)):
                 raise InterfacefIOError("UART write failed")
 
-    def read(self, length: int) -> bytes:
+    def _update_rbuf(self):
         assert _dev is not None
-        with _lock:
-            ret = _dev.uart_read(self._idx, length)
-            if ret is None:
-                raise InterfacefIOError("UART read failed")
-            return bytes(ret)
+        ret = _dev.uart_read(self._idx, 1024)
+        if ret is None:
+            raise InterfacefIOError("UART read failed")
+        self._rbuf.extend(ret)
+
+    def read(self, length: int = 1) -> bytes:
+        self._update_rbuf()
+        if len(self._rbuf) < length and self._timeout is not None:
+            start = time.perf_counter()
+            while True:
+                time.sleep(0.001)
+                self._update_rbuf()
+                if (
+                    len(self._rbuf) >= length
+                    or time.perf_counter() - start > self._timeout
+                ):
+                    break
+        data = bytes(self._rbuf[:length])
+        self._rbuf = self._rbuf[length:]
+        return data
+
+    def readline(self, length: int = -1) -> bytes:
+        self._update_rbuf()
+        start = time.perf_counter()
+        while True:
+            time.sleep(0.001)
+            if (
+                self._timeout is not None
+                and time.perf_counter() - start > self._timeout
+            ):
+                return b""
+            self._update_rbuf()
+            fd = self._rbuf.find(b"\n")
+            if fd != -1:
+                data = bytes(self._rbuf[: fd + 1])
+                self._rbuf = self._rbuf[fd + 1 :]
+                return data
+            if length > -1 and len(self._rbuf) >= length:
+                data = bytes(self._rbuf[:length])
+                self._rbuf = self._rbuf[length:]
+                return data
 
     @property
     def in_waiting(self) -> int:
-        assert _dev is not None
-        with _lock:
-            ret = _dev.uart_in_waiting(self._idx)
-            if ret is None:
-                raise InterfacefIOError("UART query in-waiting failed")
-            return ret
+        self._update_rbuf()
+        return len(self._rbuf)
 
     def close(self):
         assert _dev is not None
@@ -302,7 +331,7 @@ class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
 class CH347_SPIInterface(SPIInterfaceTemplate):
     def __init__(
         self,
-        auto_cs: bool,
+        enable_cs: bool,
         cs: Literal[1, 2],
         cs_polarity: bool,
         auto_reset: bool,
@@ -311,7 +340,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     ) -> None:
         self._cs = cs
         self._cs_pol = cs_polarity  # active low
-        self._auto_cs = auto_cs
+        self._enable_cs = enable_cs
         self._mode = mode
         self._auto_reset = auto_reset
         self._clock, self._speed = self._get_speed(speed_hz)
@@ -340,7 +369,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
             raise InterfaceIOTimeout("SPI Set config failed")
 
     def _cs_update(self):
-        if self._auto_cs:
+        if self._enable_cs:
             if self._cs == 2:
                 iEnableSelect = 1 << 8
                 iIsAutoDeativeCS = 1 << 0
@@ -419,13 +448,12 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     def _check(self):
         if self._auto_reset:
             self._reset()
-        if self._auto_cs:
             self._cs_update()
 
     def write(self, data: Union[bytes, List[int]]):
         assert _dev is not None
         with _lock:
-            cs = 0x80 if self._auto_cs else 0x00
+            cs = 0x80 if self._enable_cs else 0x00
             self._check()
             if not _dev.spi_write(cs, bytes(data)):
                 raise InterfacefIOError("SPI write failed")
@@ -433,7 +461,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     def read(self, length: int) -> bytes:
         assert _dev is not None
         with _lock:
-            cs = 0x80 if self._auto_cs else 0x00
+            cs = 0x80 if self._enable_cs else 0x00
             self._check()
             ret = _dev.spi_read(cs, b"", length)
             if ret is None:
@@ -443,7 +471,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     def transfer(self, data: Union[bytes, List[int]]) -> bytes:
         assert _dev is not None
         with _lock:
-            cs = 0x80 if self._auto_cs else 0x00
+            cs = 0x80 if self._enable_cs else 0x00
             self._check()
             ret = _dev.spi_stream_write_read(cs, bytes(data))
             # ret = _dev.spi_write_read(cs, bytes(data))
@@ -455,7 +483,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
 class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
-        auto_cs: bool = False,
+        enable_cs: bool = True,
         cs: Literal[1, 2] = 1,
         cs_polarity: bool = False,
         auto_reset: bool = False,
@@ -470,14 +498,14 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
             if not _dev.open_device():
                 raise InterfaceInitError("CH347 open failed")
         self._cs: Literal[1, 2] = cs
-        self._auto_cs = auto_cs
+        self._enable_cs = enable_cs
         self._cs_polarity = cs_polarity
         self._auto_reset = auto_reset
         self.dev_type = "spi"
 
     def build(self, mode: int, speed_hz: int) -> CH347_SPIInterface:
         return CH347_SPIInterface(
-            self._auto_cs,
+            self._enable_cs,
             self._cs,
             self._cs_polarity,
             self._auto_reset,

@@ -10,7 +10,6 @@ from drivers.interface import request_interface
 from .status import GGA_Status, RMC_Status, VTG_Status
 from .utils import ZKW_Commands, add_nema_checksum
 
-
 class GPS(object):
     # Public
     last_messages: Dict[str, NMEAMessage] = {}

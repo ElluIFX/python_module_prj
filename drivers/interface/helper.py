@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, Literal, Optional, Union, overload
+from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union, overload
 
 from .manager import InterfaceManager
 from .templates import (
@@ -40,7 +40,7 @@ def register_interface(
     retry=3,
     txrx_leds=True,
     add_lock=True,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "CP2112_I2CInterfaceBuilder":
     ...
 
@@ -51,7 +51,7 @@ def register_interface(
     driver_type: Literal["gpio"],
     pinmap: Optional[Dict[str, "CP2112AvailablePins"]] = None,
     add_lock=True,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "CP2112_GPIOInterfaceBuilder":
     ...
 
@@ -62,7 +62,7 @@ def register_interface(
     driver_type: Literal["i2c"],
     clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
     add_lock=True,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_I2CInterfaceBuilder":
     ...
 
@@ -71,9 +71,9 @@ def register_interface(
 def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["uart"],
-    uart_index: int,
+    uart_index: int = 0,
     add_lock=True,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_UARTInterfaceBuilder":
     ...
 
@@ -82,12 +82,12 @@ def register_interface(
 def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["spi"],
-    auto_cs: bool = False,
+    enable_cs: bool = True,
     cs: Literal[1, 2] = 1,
     cs_polarity: bool = False,
     auto_reset: bool = False,
     add_lock=True,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_SPIInterfaceBuilder":
     ...
 
@@ -98,7 +98,7 @@ def register_interface(
     driver_type: Literal["gpio"],
     pinmap: Optional[Dict[str, str]] = None,
     add_lock=True,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_GPIOInterfaceBuilder":
     ...
 
@@ -109,7 +109,7 @@ def register_interface(
     driver_type: Literal["i2c"],
     devpath: str,
     keep_alive: bool = False,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "Periphery_I2CInterfaceBuilder":
     ...
 
@@ -119,7 +119,7 @@ def register_interface(
     driver_name: Literal["periphery"],
     driver_type: Literal["spi"],
     devpath: str,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "Periphery_SPIInterfaceBuilder":
     ...
 
@@ -129,7 +129,7 @@ def register_interface(
     driver_name: Literal["periphery"],
     driver_type: Literal["uart"],
     devpath: str,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "Periphery_UARTInterfaceBuilder":
     ...
 
@@ -140,7 +140,7 @@ def register_interface(
     driver_type: Literal["gpio"],
     pinmap: Optional[Dict[str, str]] = None,
     modemap: Optional[Dict[str, "GpioModes_T"]] = None,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "Periphery_GPIOInterfaceBuilder":
     ...
 
@@ -150,7 +150,7 @@ def register_interface(
     driver_name: Literal["pyserial"],
     driver_type: Literal["uart"],
     port: str,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "PySerial_UARTInterfaceBuilder":
     ...
 
@@ -160,7 +160,7 @@ def register_interface(
     driver_name: Literal["smbus2"],
     driver_type: Literal["i2c"],
     bus: Union[int, str],
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "SMBus2_I2CInterfaceBuilder":
     ...
 
@@ -171,7 +171,7 @@ def register_interface(
     driver_type: Literal["spi"],
     channel: int,
     port: int,
-    **xargs,
+    specific_module: Union[None, str, List[str]] = None,
 ) -> "Spidev_SPIInterfaceBuilder":
     ...
 
@@ -182,14 +182,14 @@ def register_interface(
     *args,
     **xargs,
 ):
-    module_name = xargs.pop("module_name", None)
+    spm = xargs.pop("specific_module", None)
     if driver_name == "cp2112":
         from .if_cp2112 import CP2112_GPIOInterfaceBuilder, CP2112_I2CInterfaceBuilder
 
         if driver_type == "i2c":
-            return CP2112_I2CInterfaceBuilder(*args, **xargs).register(module_name)
+            return CP2112_I2CInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "gpio":
-            return CP2112_GPIOInterfaceBuilder(*args, **xargs).register(module_name)
+            return CP2112_GPIOInterfaceBuilder(*args, **xargs).register(spm)
     elif driver_name == "ch347":
         from .if_ch347 import (
             CH347_GPIOInterfaceBuilder,
@@ -199,13 +199,13 @@ def register_interface(
         )
 
         if driver_type == "i2c":
-            return CH347_I2CInterfaceBuilder(*args, **xargs).register(module_name)
+            return CH347_I2CInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "uart":
-            return CH347_UARTInterfaceBuilder(*args, **xargs).register(module_name)
+            return CH347_UARTInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "spi":
-            return CH347_SPIInterfaceBuilder(*args, **xargs).register(module_name)
+            return CH347_SPIInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "gpio":
-            return CH347_GPIOInterfaceBuilder(*args, **xargs).register(module_name)
+            return CH347_GPIOInterfaceBuilder(*args, **xargs).register(spm)
     elif driver_name == "periphery":
         from .if_periphery import (
             Periphery_GPIOInterfaceBuilder,
@@ -215,28 +215,28 @@ def register_interface(
         )
 
         if driver_type == "i2c":
-            return Periphery_I2CInterfaceBuilder(*args, **xargs).register(module_name)
+            return Periphery_I2CInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "spi":
-            return Periphery_SPIInterfaceBuilder(*args, **xargs).register(module_name)
+            return Periphery_SPIInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "uart":
-            return Periphery_UARTInterfaceBuilder(*args, **xargs).register(module_name)
+            return Periphery_UARTInterfaceBuilder(*args, **xargs).register(spm)
         elif driver_type == "gpio":
-            return Periphery_GPIOInterfaceBuilder(*args, **xargs).register(module_name)
+            return Periphery_GPIOInterfaceBuilder(*args, **xargs).register(spm)
     elif driver_name == "pyserial":
         from .if_pyserial import PySerial_UARTInterfaceBuilder
 
         if driver_type == "uart":
-            return PySerial_UARTInterfaceBuilder(*args, **xargs).register(module_name)
+            return PySerial_UARTInterfaceBuilder(*args, **xargs).register(spm)
     elif driver_name == "smbus2":
         from .if_smbus2 import SMBus2_I2CInterfaceBuilder
 
         if driver_type == "i2c":
-            return SMBus2_I2CInterfaceBuilder(*args, **xargs).register(module_name)
+            return SMBus2_I2CInterfaceBuilder(*args, **xargs).register(spm)
     elif driver_name == "spidev":
         from .if_spidev import Spidev_SPIInterfaceBuilder
 
         if driver_type == "spi":
-            return Spidev_SPIInterfaceBuilder(*args, **xargs).register(module_name)
+            return Spidev_SPIInterfaceBuilder(*args, **xargs).register(spm)
     raise ValueError(
         f"Unknown combination of driver '{driver_name}' and type '{driver_type}'"
     )

@@ -67,20 +67,20 @@ class BaseInterfaceBuilder:
         ...
 
     @final
-    def register(self, module_name: Union[None, str, List[str]] = None):
+    def register(self, specific_module: Union[None, str, List[str]] = None):
         """
         Register the interface to the interface manager
 
-        module_name: offer name if this interface is specific to a module
+        specific_module: offer name if this interface is specific to a module
         """
         assert self.dev_type is not None, "Invalid interface builder"
-        if module_name is None:
+        if specific_module is None:
             InterfaceManager.register_global_interface(self.dev_type, self)
         else:
             InterfaceManager.register_specific_interface(
-                self.dev_type, module_name, self
+                self.dev_type, specific_module, self
             )
-        self._module_name = module_name
+        self._specific_module = specific_module
         return self
 
     @final
@@ -89,11 +89,11 @@ class BaseInterfaceBuilder:
         Unregister the interface from the interface manager
         """
         assert self.dev_type is not None, "Invalid interface builder"
-        if self._module_name is None:
+        if self._specific_module is None:
             InterfaceManager.unregister_global_interface(self.dev_type)
         else:
             InterfaceManager.unregister_specific_interface(
-                self.dev_type, self._module_name
+                self.dev_type, self._specific_module
             )
         return self
 
@@ -130,7 +130,7 @@ class InterfaceManager:
     @staticmethod
     def register_specific_interface(
         dev_type: AvailableDevTypes,
-        module_name: Union[str, List[str]],
+        specific_module: Union[str, List[str]],
         interface: BaseInterfaceBuilder,
     ):
         """
@@ -148,10 +148,10 @@ class InterfaceManager:
                 f"Registered a specific {dev_type.upper()} interface for {module_name.upper()}"
             )
 
-        if isinstance(module_name, str):
-            register(dev_type, module_name, interface)
-        elif isinstance(module_name, list):
-            for name in module_name:
+        if isinstance(specific_module, str):
+            register(dev_type, specific_module, interface)
+        elif isinstance(specific_module, list):
+            for name in specific_module:
                 register(dev_type, name, interface)
         else:
             raise ValueError("Invalid module name")
@@ -169,7 +169,7 @@ class InterfaceManager:
     @staticmethod
     def unregister_specific_interface(
         dev_type: AvailableDevTypes,
-        module_name: Union[str, List[str]],
+        specific_module: Union[str, List[str]],
     ):
         """
         Unregister a specific interface
@@ -184,10 +184,10 @@ class InterfaceManager:
                     f"Specific {dev_type.upper()} interface for {module_name.upper()} unregistered"
                 )
 
-        if isinstance(module_name, str):
-            unregister(dev_type, module_name)
-        elif isinstance(module_name, list):
-            for name in module_name:
+        if isinstance(specific_module, str):
+            unregister(dev_type, specific_module)
+        elif isinstance(specific_module, list):
+            for name in specific_module:
                 unregister(dev_type, name)
 
     @staticmethod

@@ -37,8 +37,11 @@ class PySerial_UARTInterface(UARTInterfaceTemplate):
     def write(self, data: bytes):
         self._ser.write(data)
 
-    def read(self, length: int) -> bytes:
+    def read(self, length: int = 1) -> bytes:
         return self._ser.read(length)
+
+    def readline(self, length: int = -1) -> bytes:
+        return self._ser.readline(length)
 
     @property
     def in_waiting(self) -> int:

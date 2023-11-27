@@ -9,12 +9,14 @@ from loguru import logger
 from .errors import InterfacefIOError
 
 
-def i2c_bus_scan() -> list[int]:
+def i2c_bus_scanner(from_addr: int = 0x01, to_addr: int = 0x7F) -> list[int]:
     from . import request_interface
 
-    i2c_bus = request_interface("i2c", "bus-scanner", 0x01)
+    i2c_bus = request_interface("i2c", "i2c-bus-scanner", from_addr)
     addrs = []
-    for addr in range(1, 128):
+    if to_addr > 0x7F:
+        to_addr = 0x7F
+    for addr in range(from_addr, to_addr + 1):
         try:
             i2c_bus.address = addr
             if i2c_bus.check_address():
@@ -26,15 +28,15 @@ def i2c_bus_scan() -> list[int]:
     return addrs
 
 
-def get_permission(dev):
+def get_permission(path: str):
     """
     Get permission to access device
     """
     if os.name != "posix":
-        raise Exception(f"Permission denied to access {dev}")
-    logger.warning(f"Permission denied to access {dev}, tring get permission")
-    if os.system(f"sudo chmod 666 {dev}") != 0:
-        raise Exception(f"Access to {dev} failed, please check your permission")
+        raise Exception(f"Permission denied to access {path:str}")
+    logger.warning(f"Permission denied to access {path:str}, tring get permission")
+    if os.system(f"sudo chmod 666 {path:str}") != 0:
+        raise Exception(f"Access to {path:str} failed, please check your permission")
 
 
 @lru_cache(64)

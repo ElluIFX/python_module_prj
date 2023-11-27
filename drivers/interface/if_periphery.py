@@ -209,7 +209,7 @@ class Periphery_UARTInterface(UARTInterfaceTemplate):
     def write(self, data: bytes) -> None:
         self._uart.write(data)
 
-    def read(self, length: int) -> bytes:
+    def read(self, length: int = 1) -> bytes:
         return self._uart.read(length, timeout=self._timeout)
 
     def flush(self) -> None:

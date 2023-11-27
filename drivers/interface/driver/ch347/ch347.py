@@ -13,49 +13,42 @@ if platform.architecture()[0] == "64bit":
 else:
     _LIBPATH = os.path.join(_PATH, "CH347DLL.DLL")
 
-# MAX devices number
-MAX_DEVICE_NUMBER = 8
 # Define the callback function type
-NOTIFY_ROUTINE = ctypes.CFUNCTYPE(None, ctypes.c_ulong)
 INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
+NOTIFY_ROUTINE = ctypes.CFUNCTYPE(None, ctypes.c_ulong)
 GPIO_INT_ROUTINE = ctypes.CFUNCTYPE(None, ctypes.POINTER(ctypes.c_ubyte))
 
 
 class CH347:
     def __init__(self) -> None:
-        self._ch347dll = init_ch347_dll(_LIBPATH)
-
+        self._dev = init_ch347_dll(_LIBPATH)
         # 创建回调函数对象并绑定到实例属性
-        self._callback_funcs = [NOTIFY_ROUTINE(self.event_callback)]
+        self._callback_funcs = [NOTIFY_ROUTINE(self.default_event_callback)]
 
-    def list_devices(self) -> int:
-        # List all devices
-        num_devices = 0
-        dev_info = DeviceInfo()
+    def list_devices(self) -> list[DeviceInfo]:
+        dev_infos = []
         print("Listing devices:")
         print("-" * 40)
-        for i in range(MAX_DEVICE_NUMBER):
-            if self._ch347dll.CH347OpenDevice(i) == INVALID_HANDLE_VALUE:
+        for i in range(8):
+            if self._dev.CH347OpenDevice(i) == INVALID_HANDLE_VALUE:
                 break
-            num_devices += 1
-            if self._ch347dll.CH347GetDeviceInfor(i, ctypes.byref(dev_info)):
+            dev_info = DeviceInfo()
+            if self._dev.CH347GetDeviceInfor(i, ctypes.byref(dev_info)):
+                dev_infos.append(dev_info)
                 for field_name, _ in dev_info._fields_:
                     value = getattr(dev_info, field_name)
                     print(f"{field_name}: {value}")
             print("-" * 40)
-            self._ch347dll.CH347CloseDevice(i)
-        print(f"Number of devices: {num_devices}")
-        return num_devices
+            self._dev.CH347CloseDevice(i)
+        print(f"Number of devices: {len(dev_infos)}")
+        return dev_infos
 
     @staticmethod
-    def event_callback(iEventStatus) -> None:
-        # Callback function implementation
+    def default_event_callback(iEventStatus) -> None:
         logger.debug("Callback event status:", iEventStatus)
         if iEventStatus == 0:
-            # Device unplug event
             logger.warning("Device unplugged")
         elif iEventStatus == 3:
-            # Device insertion event
             logger.info("Device inserted")
 
     def open_device(self, device_index: int = 0) -> Optional[int]:
@@ -69,7 +62,7 @@ class CH347:
             int: Handle to the opened device if successful, None otherwise.
         """
         self._device_index = device_index
-        handle = self._ch347dll.CH347OpenDevice(self._device_index)
+        handle = self._dev.CH347OpenDevice(self._device_index)
         if handle != INVALID_HANDLE_VALUE:
             return handle
         else:
@@ -82,7 +75,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347CloseDevice(self._device_index)
+        result = self._dev.CH347CloseDevice(self._device_index)
         return result
 
     def get_device_info(self) -> Optional[DeviceInfo]:
@@ -94,7 +87,7 @@ class CH347:
             DeviceInfo: Device information.
         """
         dev_info = DeviceInfo()
-        result = self._ch347dll.CH347GetDeviceInfor(
+        result = self._dev.CH347GetDeviceInfor(
             self._device_index, ctypes.byref(dev_info)
         )
         if result:
@@ -123,7 +116,7 @@ class CH347:
         chip_type = ctypes.c_ubyte()
 
         # Call the CH347GetVersion function
-        result = self._ch347dll.CH347GetVersion(
+        result = self._dev.CH347GetVersion(
             self._device_index,
             ctypes.byref(driver_ver),
             ctypes.byref(dll_ver),
@@ -154,7 +147,7 @@ class CH347:
             callback = NOTIFY_ROUTINE(iNotifyRoutine)
             self._callback_funcs.append(callback)
         str_device_id = ctypes.c_char_p(iDeviceID.encode("utf-8"))
-        result = self._ch347dll.CH347SetDeviceNotify(
+        result = self._dev.CH347SetDeviceNotify(
             self._device_index, str_device_id, callback
         )
         return result
@@ -170,7 +163,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347ReadData(self._device_index, oBuffer, ioLength)
+        result = self._dev.CH347ReadData(self._device_index, oBuffer, ioLength)
         return result
 
     def write_data(self, iBuffer, ioLength) -> bool:
@@ -184,7 +177,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347WriteData(self._device_index, iBuffer, ioLength)
+        result = self._dev.CH347WriteData(self._device_index, iBuffer, ioLength)
         return result
 
     def set_timeout(self, iWriteTimeout: int, iReadTimeout: int) -> bool:
@@ -198,7 +191,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347SetTimeout(
+        result = self._dev.CH347SetTimeout(
             self._device_index, iWriteTimeout, iReadTimeout
         )
         return result
@@ -213,9 +206,7 @@ class CH347:
         Returns:
             bool: True if initialization is successful, False otherwise.
         """
-        result = self._ch347dll.CH347SPI_Init(
-            self._device_index, ctypes.byref(spi_config)
-        )
+        result = self._dev.CH347SPI_Init(self._device_index, ctypes.byref(spi_config))
         return result
 
     def spi_init(
@@ -271,9 +262,7 @@ class CH347:
         spi_config.IsAutoDeativeCS = is_auto_deactive_cs
         spi_config.ActiveDelay = active_delay
         spi_config.DelayDeactive = delay_deactive
-        result = self._ch347dll.CH347SPI_Init(
-            self._device_index, ctypes.byref(spi_config)
-        )
+        result = self._dev.CH347SPI_Init(self._device_index, ctypes.byref(spi_config))
         return result
 
     def spi_get_cfg(self) -> Optional[SPIConfig]:
@@ -294,9 +283,7 @@ class CH347:
             an empty object with default values.
         """
         spi_config = SPIConfig()
-        result = self._ch347dll.CH347SPI_GetCfg(
-            self._device_index, ctypes.byref(spi_config)
-        )
+        result = self._dev.CH347SPI_GetCfg(self._device_index, ctypes.byref(spi_config))
         if result:
             return spi_config
         else:
@@ -312,7 +299,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347SPI_ChangeCS(self._device_index, iStatus)
+        result = self._dev.CH347SPI_ChangeCS(self._device_index, iStatus)
         return result
 
     def spi_set_databits(self, iDataBits: Literal[0, 1]) -> bool:
@@ -325,7 +312,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347SPI_SetDataBits(self._device_index, iDataBits)
+        result = self._dev.CH347SPI_SetDataBits(self._device_index, iDataBits)
         return result
 
     def spi_set_chip_select(
@@ -354,7 +341,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347SPI_SetChipSelect(
+        result = self._dev.CH347SPI_SetChipSelect(
             self._device_index,
             iEnableSelect,
             iChipSelect,
@@ -381,7 +368,7 @@ class CH347:
         """
         write_length = len(write_data)
         write_buffer = ctypes.create_string_buffer(write_data)
-        result = self._ch347dll.CH347SPI_Write(
+        result = self._dev.CH347SPI_Write(
             self._device_index, chip_select, write_length, write_step, write_buffer
         )
         return result
@@ -415,7 +402,7 @@ class CH347:
         )
 
         read_len = ctypes.c_ulong(read_length)
-        result = self._ch347dll.CH347SPI_Read(
+        result = self._dev.CH347SPI_Read(
             self._device_index,
             chip_select,
             write_length,
@@ -443,7 +430,7 @@ class CH347:
         """
         io_length = len(write_data)
         io_buffer = ctypes.create_string_buffer(write_data)
-        result = self._ch347dll.CH347SPI_WriteRead(
+        result = self._dev.CH347SPI_WriteRead(
             self._device_index, chip_select, io_length, io_buffer
         )
         if result:
@@ -468,7 +455,7 @@ class CH347:
         """
         io_length = len(write_data)
         io_buffer = ctypes.create_string_buffer(write_data)
-        result = self._ch347dll.CH347StreamSPI4(
+        result = self._dev.CH347StreamSPI4(
             self._device_index, chip_select, io_length, io_buffer
         )
         if result:
@@ -493,7 +480,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347I2C_Set(self._device_index, interface_speed)
+        result = self._dev.CH347I2C_Set(self._device_index, interface_speed)
         return result
 
     def i2c_set_delay_ms(self, delay_ms: int) -> bool:
@@ -506,7 +493,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347I2C_SetDelaymS(self._device_index, delay_ms)
+        result = self._dev.CH347I2C_SetDelaymS(self._device_index, delay_ms)
         return result
 
     def i2c_set_stretch(self, enable: bool) -> bool:
@@ -519,7 +506,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347I2C_SetStretch(self._device_index, enable)
+        result = self._dev.CH347I2C_SetStretch(self._device_index, enable)
         return result
 
     def i2c_stream(self, write_data: bytes, read_length: int) -> Optional[bytes]:
@@ -541,7 +528,7 @@ class CH347:
         # Create ctypes buffer for read data
         read_buffer = ctypes.create_string_buffer(read_length)
 
-        result = self._ch347dll.CH347StreamI2C(
+        result = self._dev.CH347StreamI2C(
             self._device_index, write_length, write_buffer, read_length, read_buffer
         )
 
@@ -575,7 +562,7 @@ class CH347:
         read_buffer = ctypes.create_string_buffer(write_length)
         ack_num = ctypes.c_ulong()
 
-        result = self._ch347dll.CH347StreamI2C_RetACK(
+        result = self._dev.CH347StreamI2C_RetACK(
             self._device_index,
             write_length,
             write_buffer,
@@ -607,7 +594,7 @@ class CH347:
         """
         length = len(write_data)
         write_buffer = ctypes.create_string_buffer(write_data)
-        result = self._ch347dll.CH347I2C_WriteEEPROM(
+        result = self._dev.CH347I2C_WriteEEPROM(
             self._device_index, eeprom_type, address, length, write_buffer
         )
         return result
@@ -630,7 +617,7 @@ class CH347:
             bytes: Data read from the i2c EEPROM.
         """
         read_buffer = ctypes.create_string_buffer(read_length)
-        result = self._ch347dll.CH347I2C_ReadEEPROM(
+        result = self._dev.CH347I2C_ReadEEPROM(
             self._device_index, eeprom_type, address, read_length, read_buffer
         )
         if result:
@@ -650,7 +637,7 @@ class CH347:
         Returns:
             int: Handle to the opened device if successful, None otherwise.
         """
-        handle = self._ch347dll.CH347Uart_Open(uart_index)
+        handle = self._dev.CH347Uart_Open(uart_index)
         if handle != INVALID_HANDLE_VALUE:
             return handle
         else:
@@ -663,7 +650,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347Uart_Close(uart_index)
+        result = self._dev.CH347Uart_Close(uart_index)
         return result
 
     def uart_set_device_notify(
@@ -685,7 +672,7 @@ class CH347:
             callback = NOTIFY_ROUTINE(iNotifyRoutine)
             self._callback_funcs.append(callback)
         str_device_id = ctypes.c_char_p(iDeviceID.encode("utf-8"))
-        result = self._ch347dll.CH347Uart_SetDeviceNotify(
+        result = self._dev.CH347Uart_SetDeviceNotify(
             uart_index, str_device_id, callback
         )
         return result
@@ -712,7 +699,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347Uart_Init(
+        result = self._dev.CH347Uart_Init(
             uart_index, baudrate, bytesize, parity, stopbits, bytetimout
         )
         return result
@@ -730,9 +717,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347Uart_SetTimeout(
-            uart_index, write_timeout, read_timeout
-        )
+        result = self._dev.CH347Uart_SetTimeout(uart_index, write_timeout, read_timeout)
         return result
 
     def uart_read(self, uart_index: int, read_length: int) -> Optional[bytes]:
@@ -751,7 +736,7 @@ class CH347:
         read_buffer = ctypes.create_string_buffer(read_length)
 
         read_len = ctypes.c_ulong(read_length)
-        result = self._ch347dll.CH347Uart_Read(
+        result = self._dev.CH347Uart_Read(
             uart_index,
             read_buffer,
             ctypes.byref(read_len),
@@ -775,7 +760,7 @@ class CH347:
         """
         write_length = len(write_data)
         write_buffer = ctypes.create_string_buffer(write_data)
-        result = self._ch347dll.CH347Uart_Write(
+        result = self._dev.CH347Uart_Write(
             uart_index,
             write_buffer,
             ctypes.byref(ctypes.c_ulong(write_length)),
@@ -789,13 +774,11 @@ class CH347:
         Returns:
             int: Number of bytes in the UART input buffer. None if the operation fails.
         """
-        # FIXME: CH347Uart_QueryBufUpload always returns 0
-        return 64
+        # BUG: CH347Uart_QueryBufUpload always returns 0
         num_bytes = ctypes.c_longlong()
-        result = self._ch347dll.CH347Uart_QueryBufUpload(
-            uart_index, ctypes.byref(num_bytes)
-        )
-        print(num_bytes.value)
+        print(num_bytes)
+        result = self._dev.CH347Uart_QueryBufUpload(uart_index, ctypes.byref(num_bytes))
+        print(num_bytes)
         if result:
             return num_bytes.value
         else:
@@ -813,9 +796,7 @@ class CH347:
         Returns:
             bool: True if successful, False otherwise.
         """
-        result = self._ch347dll.CH347GPIO_Set(
-            self._device_index, enable, dir_out, data_out
-        )
+        result = self._dev.CH347GPIO_Set(self._device_index, enable, dir_out, data_out)
         return result
 
     def gpio_get(self) -> Optional[Tuple[int, int]]:
@@ -832,7 +813,7 @@ class CH347:
         """
         dir_out = ctypes.c_ubyte()
         data_out = ctypes.c_ubyte()
-        result = self._ch347dll.CH347GPIO_Get(
+        result = self._dev.CH347GPIO_Get(
             self._device_index, ctypes.byref(dir_out), ctypes.byref(data_out)
         )
         if result:
@@ -866,7 +847,7 @@ class CH347:
         else:
             callback = GPIO_INT_ROUTINE(int_callback)
         self._callback_funcs.append(callback)
-        result = self._ch347dll.CH347SetIntRoutine(
+        result = self._dev.CH347SetIntRoutine(
             self._device_index, int0_pin, int0_edge, int1_pin, int1_edge, callback
         )
         return result
@@ -885,9 +866,7 @@ class CH347:
             other bits are reserved.
         """
         int_status = ctypes.c_ubyte()
-        result = self._ch347dll.CH347ReadInter(
-            self._device_index, ctypes.byref(int_status)
-        )
+        result = self._dev.CH347ReadInter(self._device_index, ctypes.byref(int_status))
         if result:
             return int_status.value
         else:
