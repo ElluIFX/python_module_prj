@@ -31,5 +31,11 @@ class MyNewDriver:
         self._i2c = request_interface("i2c", "DriverName", address=addr)
         ...
 """
+from .errors import (  # noqa: F401
+    InterfacefIOError,
+    InterfaceInitError,
+    InterfaceIOTimeout,
+    InterfaceNotFoundError,
+)
 from .helper import register_interface, request_interface  # noqa: F401
 from .manager import InterfaceManager  # noqa: F401

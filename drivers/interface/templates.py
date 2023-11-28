@@ -4,7 +4,7 @@ from typing import Callable, Dict, List, Literal, Optional, Union, final
 
 from loguru import logger
 
-from .errors import InterfaceNotFound
+from .errors import InterfaceNotFoundError
 
 __all__ = [
     "I2CMessageTemplate",
@@ -12,7 +12,6 @@ __all__ = [
     "SPIInterfaceTemplate",
     "UARTInterfaceTemplate",
     "GPIOInterfaceTemplate",
-    "FAKE_GPIO_NAME",
     "GpioModes_T",
     "IntModes_T",
     "GpioModes",
@@ -403,8 +402,6 @@ class UARTInterfaceTemplate(BaseInterfaceTemplate):
         raise NotImplementedError()
 
 
-FAKE_GPIO_NAME = "__FAKE_GPIO__"  # all operations will be ignored
-
 GpioModes = [
     "input_no_pull",
     "input_pull_up",
@@ -466,6 +463,12 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
               initialize the pin before using it.
               For interrupt mode, call set_interrupt() instead.
               Better check get_available_pinmode() before setting.
+        """
+        raise NotImplementedError()
+
+    def get_mode(self, pin_name: str) -> GpioModes_T:
+        """
+        Return the mode of a pin
         """
         raise NotImplementedError()
 
@@ -575,81 +578,95 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
         Return a GPIO instance
         """
         if pin_name not in self.get_available_pins():
-            raise InterfaceNotFound(f"Pin {pin_name} not available")
-
-        class GPIOPinWrapper(GPIOPinInstance):
-            def __getattribute__(_self, name: str):
-                return lambda *args, **kwargs: self.__getattribute__(name)(
-                    pin_name, *args, **kwargs
-                )
-
-        return GPIOPinWrapper()
+            raise InterfaceNotFoundError(f"Pin {pin_name} not available")
+        return GPIOPinInstance(self, pin_name)
 
 
 class GPIOPinInstance:
+    def __init__(self, io: GPIOInterfaceTemplate, pin_name: str) -> None:
+        self._io = io
+        self._pin_name = pin_name
+
     def set_mode(self, mode: GpioModes_T):
         """
         Set the mode of this pin
         """
-        ...
+        self._io.set_mode(self._pin_name, mode)
+
+    def get_mode(self) -> GpioModes_T:
+        """
+        Return the mode of this pin
+        """
+        return self._io.get_mode(self._pin_name)
+
+    mode = property(get_mode, set_mode)
 
     def free(self):
         """
         Free this pin
         """
-        ...
+        self._io.free(self._pin_name)
 
     def write(self, level: bool):
         """
         Write digital value to this pin
         """
-        ...
+        self._io.write(self._pin_name, level)
 
     def read(self) -> bool:
         """
         Read digital value from this pin
         """
-        ...
+        return self._io.read(self._pin_name)
+
+    value = property(read, write)
+    level = property(read, write)
 
     def read_analog(self) -> float:
         """
         Read analog value from this pin
         Value range: 0.0 ~ 1.0
         """
-        ...
+        return self._io.read_analog(self._pin_name)
 
     def write_analog(self, value: float):
         """
         Write analog value to this pin
         Value range: 0.0 ~ 1.0
         """
-        ...
+        self._io.write_analog(self._pin_name, value)
+
+    analog_value = property(read_analog, write_analog)
 
     def write_pwm_freq(self, freq: float):
         """
         Write PWM frequency to this pin
         """
-        ...
+        self._io.write_pwm_freq(self._pin_name, freq)
+
+    freq = property(None, write_pwm_freq)
 
     def write_pwm_duty(self, duty: float):
         """
         Write PWM duty to this pin
         Duty range: 0.0 ~ 1.0
         """
-        ...
+        self._io.write_pwm_duty(self._pin_name, duty)
+
+    duty = property(None, write_pwm_duty)
 
     def write_pwm(self, freq: float, duty: float, polarity: bool = False):
         """
         Set PWM output to this pin
         Duty range: 0.0 ~ 1.0
         """
-        ...
+        self._io.write_pwm(self._pin_name, freq, duty, polarity)
 
     def get_available_pinmode(self) -> List[GpioModes_T]:
         """
         Return all available modes of this pin
         """
-        ...
+        return self._io.get_available_pinmode(self._pin_name)
 
     def set_interrupt(
         self,
@@ -663,13 +680,15 @@ class GPIOPinInstance:
         pinmode: the mode of the pin, must be interrupt_xxx
         callback: will be called when interrupt triggered, pass None to unregister
         """
-        ...
+        self._io.set_interrupt(self._pin_name, intmode, pinmode, callback)
 
     def read_interrupt(self) -> bool:
         """
         Read the interrupt state of this pin
         """
-        ...
+        return self._io.read_interrupt(self._pin_name)
+
+    int_state = property(read_interrupt)
 
     def poll_interrupt(self, timeout: Optional[float] = None) -> bool:
         """
@@ -677,4 +696,4 @@ class GPIOPinInstance:
 
         return: True if interrupt triggered, False if timeout
         """
-        ...
+        return self._io.poll_interrupt(self._pin_name, timeout)

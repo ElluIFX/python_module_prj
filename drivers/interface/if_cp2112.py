@@ -3,10 +3,9 @@ from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
 
 from .driver.cp2112 import CP2112, _reset_error_type
-from .errors import InterfacefIOError, InterfaceNotFound
+from .errors import InterfacefIOError, InterfaceNotFoundError
 from .manager import BaseInterfaceBuilder
 from .templates import (
-    FAKE_GPIO_NAME,
     GPIOInterfaceTemplate,
     GpioModes_T,
     I2CInterfaceTemplate,
@@ -149,13 +148,14 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def __init__(self, pinmap: Optional[Dict[str, CP2112AvailablePins]]) -> None:
         self._pinmap = pinmap if pinmap is not None else {}
         self._pinmap_inv = {v: k for k, v in self._pinmap.items()}
+        self._pinmodes: Dict[str, GpioModes_T] = {}
         return super().__init__()
 
     @lru_cache(64)
     def _remap(self, pin_name: str) -> str:
         pin_name = self._pinmap.get(pin_name, pin_name)
         if pin_name not in [f"Pin_{i}" for i in range(8)]:
-            raise InterfaceNotFound(f"Pin {pin_name} not found")
+            raise InterfaceNotFoundError(f"Pin {pin_name} not found")
         return pin_name
 
     def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
@@ -189,8 +189,6 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def set_mode(self, pin_name: str, mode: GpioModes_T):
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         offset = int(pin_name[-1])
         with _lock:
             dir, push_pull, special, clock_divider = _dev.get_gpio_config()
@@ -219,12 +217,15 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
             raise ValueError(f"Invalid mode {mode} for pin {pin_name}")
         with _lock:
             _dev.set_gpio_config(dir, push_pull, special, clock_divider)
+        self._pinmodes[pin_name] = mode
+
+    def get_mode(self, pin_name: str) -> GpioModes_T:
+        pin_name = self._remap(pin_name)
+        return self._pinmodes.get(pin_name, "none")
 
     def write_pwm_freq(self, pin_name: str, freq: int):
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         assert pin_name == "Pin_7", "Only Pin_7 supports PWM"
         # 0=48 MHz; Otherwise freq=(48 MHz)/(2*clock_divider)
         if freq >= 48000000:
@@ -241,8 +242,6 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def write(self, pin_name: str, value: bool):
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         offset = int(pin_name[-1])
         with _lock:
             _dev.set_pin(offset, 1 if value else 0)
@@ -250,8 +249,6 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
     def read(self, pin_name: str) -> bool:
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return False
         offset = int(pin_name[-1])
         with _lock:
             return _dev.get_pin(offset)

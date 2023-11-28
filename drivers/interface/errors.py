@@ -10,5 +10,5 @@ class InterfaceInitError(Exception):
     pass
 
 
-class InterfaceNotFound(Exception):
+class InterfaceNotFoundError(Exception):
     pass

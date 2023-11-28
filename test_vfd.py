@@ -6,7 +6,7 @@ import numpy as np
 from drivers.interface import register_interface
 from drivers.vfd import VFD
 
-register_interface("ch347", "spi")
+register_interface("ch347", "spi", True, cs=1)
 
 
 class fps_counter:
@@ -38,14 +38,14 @@ class fps_counter:
 video = cv2.VideoCapture("badapple.mp4")
 
 disp = VFD()
-disp.init_spi(3_750_000 * 2)
+disp.init_spi()
 disp.init_vfd(dma=True)
 
 fpsc = fps_counter()
 frame_num = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 frame_cnt = 0
 while True:
-    time.sleep(0.01)
+    # time.sleep(0.01)
     ret, frame = video.read()
     if not ret:
         break

@@ -20,6 +20,7 @@ if TYPE_CHECKING:
         CP2112_I2CInterfaceBuilder,
         CP2112AvailablePins,
     )
+    from .if_pcal6416a import PCAL6416A_GPIOInterfaceBuilder, PCAL6416AAvailablePins
     from .if_periphery import (
         Periphery_GPIOInterfaceBuilder,
         Periphery_I2CInterfaceBuilder,
@@ -83,8 +84,8 @@ def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["spi"],
     enable_cs: bool = True,
-    cs: Literal[1, 2] = 1,
-    cs_polarity: bool = False,
+    cs: Literal[0, 1] = 0,
+    cs_high: bool = False,
     auto_reset: bool = False,
     add_lock=True,
     specific_module: Union[None, str, List[str]] = None,
@@ -176,20 +177,31 @@ def register_interface(
     ...
 
 
+@overload
+def register_interface(
+    driver_name: Literal["pca6416a"],
+    driver_type: Literal["gpio"],
+    pinmap: Optional[Dict[str, "PCAL6416AAvailablePins"]] = None,
+    address: int = 0x21,
+    cache_reg: bool = True,
+) -> "PCAL6416A_GPIOInterfaceBuilder":
+    ...
+
+
 def register_interface(
     driver_name,
     driver_type,
     *args,
     **xargs,
 ):
-    spm = xargs.pop("specific_module", None)
+    mod = xargs.pop("specific_module", None)
     if driver_name == "cp2112":
         from .if_cp2112 import CP2112_GPIOInterfaceBuilder, CP2112_I2CInterfaceBuilder
 
         if driver_type == "i2c":
-            return CP2112_I2CInterfaceBuilder(*args, **xargs).register(spm)
+            return CP2112_I2CInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "gpio":
-            return CP2112_GPIOInterfaceBuilder(*args, **xargs).register(spm)
+            return CP2112_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "ch347":
         from .if_ch347 import (
             CH347_GPIOInterfaceBuilder,
@@ -199,13 +211,13 @@ def register_interface(
         )
 
         if driver_type == "i2c":
-            return CH347_I2CInterfaceBuilder(*args, **xargs).register(spm)
+            return CH347_I2CInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "uart":
-            return CH347_UARTInterfaceBuilder(*args, **xargs).register(spm)
+            return CH347_UARTInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "spi":
-            return CH347_SPIInterfaceBuilder(*args, **xargs).register(spm)
+            return CH347_SPIInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "gpio":
-            return CH347_GPIOInterfaceBuilder(*args, **xargs).register(spm)
+            return CH347_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "periphery":
         from .if_periphery import (
             Periphery_GPIOInterfaceBuilder,
@@ -215,28 +227,33 @@ def register_interface(
         )
 
         if driver_type == "i2c":
-            return Periphery_I2CInterfaceBuilder(*args, **xargs).register(spm)
+            return Periphery_I2CInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "spi":
-            return Periphery_SPIInterfaceBuilder(*args, **xargs).register(spm)
+            return Periphery_SPIInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "uart":
-            return Periphery_UARTInterfaceBuilder(*args, **xargs).register(spm)
+            return Periphery_UARTInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "gpio":
-            return Periphery_GPIOInterfaceBuilder(*args, **xargs).register(spm)
+            return Periphery_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "pyserial":
         from .if_pyserial import PySerial_UARTInterfaceBuilder
 
         if driver_type == "uart":
-            return PySerial_UARTInterfaceBuilder(*args, **xargs).register(spm)
+            return PySerial_UARTInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "smbus2":
         from .if_smbus2 import SMBus2_I2CInterfaceBuilder
 
         if driver_type == "i2c":
-            return SMBus2_I2CInterfaceBuilder(*args, **xargs).register(spm)
+            return SMBus2_I2CInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "spidev":
         from .if_spidev import Spidev_SPIInterfaceBuilder
 
         if driver_type == "spi":
-            return Spidev_SPIInterfaceBuilder(*args, **xargs).register(spm)
+            return Spidev_SPIInterfaceBuilder(*args, **xargs).register(mod)
+    elif driver_name == "pca6416a":
+        from .if_pcal6416a import PCAL6416A_GPIOInterfaceBuilder
+
+        if driver_type == "gpio":
+            return PCAL6416A_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     raise ValueError(
         f"Unknown combination of driver '{driver_name}' and type '{driver_type}'"
     )

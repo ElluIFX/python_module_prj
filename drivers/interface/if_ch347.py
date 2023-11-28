@@ -8,11 +8,10 @@ from .errors import (
     InterfacefIOError,
     InterfaceInitError,
     InterfaceIOTimeout,
-    InterfaceNotFound,
+    InterfaceNotFoundError,
 )
 from .manager import BaseInterfaceBuilder
 from .templates import (
-    FAKE_GPIO_NAME,
     GPIOInterfaceTemplate,
     GpioModes_T,
     I2CInterfaceTemplate,
@@ -332,14 +331,14 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     def __init__(
         self,
         enable_cs: bool,
-        cs: Literal[1, 2],
-        cs_polarity: bool,
+        cs: Literal[0, 1],
+        cs_high: bool,
         auto_reset: bool,
         mode: int,
         speed_hz: int,
     ) -> None:
         self._cs = cs
-        self._cs_pol = cs_polarity  # active low
+        self._cs_high = cs_high  # active low
         self._enable_cs = enable_cs
         self._mode = mode
         self._auto_reset = auto_reset
@@ -347,37 +346,39 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
         self._byteorder = 1  # MSB first
         self._bytesize = 8
         self._reset()
-        self._cs_update()
-        self.transfer([0x00])  # dummy transfer
         return super().__init__()
 
-    def _reset(self):
+    def _reset(self, dummy: bool = True):
         assert _dev is not None
-        spi_config = _dev.spi_get_cfg()
-        if spi_config is None:
-            raise InterfaceIOTimeout("SPI Get config failed")
-        spi_config.Mode = self._mode
-        spi_config.Clock = self._clock
-        spi_config.ByteOrder = self._byteorder
-        if self._cs == 1:
-            spi_config.CS1Polarity = self._cs_pol
-        else:
-            spi_config.CS2Polarity = self._cs_pol
-        spi_config.IsAutoDeativeCS = 1
-        spi_config.ChipSelect = 0xFF
-        if not _dev.spi_init_with_config(spi_config):
+        if not _dev.spi_init(
+            mode=self._mode,  # type: ignore
+            clock=self._clock,  # type: ignore
+            byte_order=self._byteorder,  # type: ignore
+            write_read_interval=0,
+            default_data=0,
+            chip_select=1 << 7 | self._cs,
+            cs1_polarity=0,
+            cs2_polarity=0,
+            is_auto_deactive_cs=1,
+            active_delay=0,
+            delay_deactive=0,
+        ):
             raise InterfaceIOTimeout("SPI Set config failed")
+        if self._enable_cs:
+            self._cs_update()
+        if dummy:
+            self.transfer([0x00])  # dummy transfer
 
     def _cs_update(self):
         if self._enable_cs:
-            if self._cs == 2:
+            if self._cs == 1:
                 iEnableSelect = 1 << 8
+                iChipSelect = 1 << 7
                 iIsAutoDeativeCS = 1 << 0
-                iChipSelect = 1 << 0
             else:
                 iEnableSelect = 1 << 0
+                iChipSelect = 1 << 15
                 iIsAutoDeativeCS = 1 << 8
-                iChipSelect = 1 << 8
         else:
             iEnableSelect = 0
             iIsAutoDeativeCS = 0
@@ -387,6 +388,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
             iEnableSelect, iChipSelect, iIsAutoDeativeCS, 0, 0
         ):
             raise InterfaceIOTimeout("SPI Set CS failed")
+        _dev.spi_change_cs(0)
 
     def _get_speed(self, speed_hz: int):
         available_speed = [
@@ -447,13 +449,12 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
 
     def _check(self):
         if self._auto_reset:
-            self._reset()
-            self._cs_update()
+            self._reset(False)
 
     def write(self, data: Union[bytes, List[int]]):
         assert _dev is not None
         with _lock:
-            cs = 0x80 if self._enable_cs else 0x00
+            cs = (0x80) if self._enable_cs else 0x00
             self._check()
             if not _dev.spi_write(cs, bytes(data)):
                 raise InterfacefIOError("SPI write failed")
@@ -461,7 +462,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     def read(self, length: int) -> bytes:
         assert _dev is not None
         with _lock:
-            cs = 0x80 if self._enable_cs else 0x00
+            cs = (0x80) if self._enable_cs else 0x00
             self._check()
             ret = _dev.spi_read(cs, b"", length)
             if ret is None:
@@ -471,7 +472,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
     def transfer(self, data: Union[bytes, List[int]]) -> bytes:
         assert _dev is not None
         with _lock:
-            cs = 0x80 if self._enable_cs else 0x00
+            cs = (0x80) if self._enable_cs else 0x00
             self._check()
             ret = _dev.spi_stream_write_read(cs, bytes(data))
             # ret = _dev.spi_write_read(cs, bytes(data))
@@ -484,8 +485,8 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         enable_cs: bool = True,
-        cs: Literal[1, 2] = 1,
-        cs_polarity: bool = False,
+        cs: Literal[0, 1] = 0,
+        cs_high: bool = False,
         auto_reset: bool = False,
         add_lock=True,
     ) -> None:
@@ -497,9 +498,9 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
                 _lock = Lock()
             if not _dev.open_device():
                 raise InterfaceInitError("CH347 open failed")
-        self._cs: Literal[1, 2] = cs
+        self._cs: Literal[0, 1] = cs
         self._enable_cs = enable_cs
-        self._cs_polarity = cs_polarity
+        self._cs_high = cs_high
         self._auto_reset = auto_reset
         self.dev_type = "spi"
 
@@ -507,7 +508,7 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
         return CH347_SPIInterface(
             self._enable_cs,
             self._cs,
-            self._cs_polarity,
+            self._cs_high,
             self._auto_reset,
             mode,
             speed_hz,
@@ -534,13 +535,14 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
         self._gpio_enable = 0
         self._gpio_dir = 0
         self._gpio_out = 0
+        self._pinmodes: Dict[str, GpioModes_T] = {}
         return super().__init__()
 
     @lru_cache(64)
     def _remap(self, pin_name: str) -> str:
         pin_name = self._pinmap.get(pin_name, pin_name)
         if pin_name not in [f"GPIO{i}" for i in range(8)]:
-            raise InterfaceNotFound(f"Pin {pin_name} not found")
+            raise InterfaceNotFoundError(f"Pin {pin_name} not found")
         return pin_name
 
     def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
@@ -556,8 +558,6 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
     def set_mode(self, pin_name: str, mode: GpioModes_T):
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         offset = int(pin_name[-1])
         if mode == "none":
             self._gpio_enable = _CLEAR_BIT(self._gpio_enable, offset)
@@ -573,12 +573,15 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
         with _lock:
             if not _dev.gpio_set(self._gpio_enable, self._gpio_dir, self._gpio_out):
                 raise InterfacefIOError("GPIO set config failed")
+        self._pinmodes[pin_name] = mode
+
+    def get_mode(self, pin_name: str) -> GpioModes_T:
+        pin_name = self._remap(pin_name)
+        return self._pinmodes.get(pin_name, "none")
 
     def write(self, pin_name: str, level: bool):
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         offset = int(pin_name[-1])
         if level:
             self._gpio_out = _SET_BIT(self._gpio_out, offset)
@@ -591,8 +594,6 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
     def read(self, pin_name: str) -> bool:
         assert _dev is not None
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return False
         offset = int(pin_name[-1])
         with _lock:
             ret = _dev.gpio_get()
@@ -604,6 +605,9 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
     def close(self):
         if _dev is not None:
             _dev.gpio_set(0, 0, 0)
+
+    def free(self, pin_name: str):
+        self.set_mode(pin_name, "none")
 
 
 class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):

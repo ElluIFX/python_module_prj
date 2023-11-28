@@ -3,10 +3,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from periphery import I2C, SPI, CdevGPIO, I2CError, Serial
 
-from .errors import InterfaceNotFound
+from .errors import InterfaceNotFoundError
 from .manager import BaseInterfaceBuilder
 from .templates import (
-    FAKE_GPIO_NAME,
     GPIOInterfaceTemplate,
     GpioModes_T,
     I2CInterfaceTemplate,
@@ -342,6 +341,7 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
         self._pins: Dict[str, CdevGPIO] = {}
         self._gpios = list_gpio()
         self._pinmap_inv = {v: k for k, v in self._pinmap.items()}
+        self._pinmodes: Dict[str, GpioModes_T] = {}
         return super().__init__()
 
     @lru_cache(64)
@@ -349,7 +349,7 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
         if self._pinmap is not None:
             pin_name = self._pinmap.get(pin_name, pin_name)
         if pin_name not in self._gpios:
-            raise InterfaceNotFound(f"GPIO {pin_name} not found")
+            raise InterfaceNotFoundError(f"GPIO {pin_name} not found")
         return pin_name
 
     @lru_cache(1)
@@ -368,8 +368,6 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
 
     def free(self, pin_name: str) -> None:
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         if pin_name in self._pins:
             self._pins[pin_name].close()
             self._pins.pop(pin_name)
@@ -384,8 +382,6 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
             "output_push_pull": {"direction": "out", "drive": "default"},
         }
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         if pin_name in self._pins:
             self._pins[pin_name].close()
             self._pins.pop(pin_name)
@@ -406,18 +402,19 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
                 )
             else:
                 raise e
+        self._pinmodes[pin_name] = mode
+
+    def get_mode(self, pin_name: str) -> GpioModes_T:
+        pin_name = self._remap(pin_name)
+        return self._pinmodes.get(pin_name, "none")
 
     def write(self, pin_name: str, value: bool):
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return
         assert pin_name in self._pins, f"GPIO {pin_name} not initialized"
         self._pins[pin_name].write(value)
 
     def read(self, pin_name: str) -> bool:
         pin_name = self._remap(pin_name)
-        if pin_name == FAKE_GPIO_NAME:
-            return False
         assert pin_name in self._pins, f"GPIO {pin_name} not initialized"
         return self._pins[pin_name].read()
 
