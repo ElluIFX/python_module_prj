@@ -457,6 +457,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
             cs = (0x80) if self._enable_cs else 0x00
             self._check()
             if not _dev.spi_write(cs, bytes(data)):
+                # if _dev.spi_read(cs, bytes(data), 0) is None:
                 raise InterfacefIOError("SPI write failed")
 
     def read(self, length: int) -> bytes:

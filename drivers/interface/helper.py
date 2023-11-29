@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         CH347_I2CInterfaceBuilder,
         CH347_SPIInterfaceBuilder,
         CH347_UARTInterfaceBuilder,
+        CH347AvailablePins,
     )
     from .if_cp2112 import (
         CP2112_GPIOInterfaceBuilder,
@@ -97,7 +98,7 @@ def register_interface(
 def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["gpio"],
-    pinmap: Optional[Dict[str, str]] = None,
+    pinmap: Optional[Dict[str, "CH347AvailablePins"]] = None,
     add_lock=True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_GPIOInterfaceBuilder":

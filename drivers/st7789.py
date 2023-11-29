@@ -5,12 +5,6 @@ import numpy as np
 
 from .interface import request_interface
 
-# def get_gpio(name):
-#     chip, offset = find_gpio(name)
-#     if name in ("C_7", "H_8"):
-#         return GPIO(f"/dev/gpiochip{chip}", offset, "out", drive="open_drain")
-#     return GPIO(f"/dev/gpiochip{chip}", offset, "out")
-
 
 class _CMD:
     # refer to ST7789V datasheet for details
@@ -92,7 +86,8 @@ class ST7789(object):
         Create an instance of the ST7789V3 display using SPI communication.
         """
 
-        self._spi = request_interface("spi", "ST7789", 0, 10000000)
+        self._spi = request_interface("spi", "ST7789", 0, 60_000_000)
+        print(f"SPI speed: {self._spi.speed_hz}")
         self._gpio = request_interface("gpio", "ST7789")
 
         self._pin_dc = self._gpio.get_pin("DC")
@@ -101,7 +96,7 @@ class ST7789(object):
         self._pin_rst.set_mode("output_push_pull")
         self._pin_dc.write(True)  # DC keeps in high
         self._pin_rst.write(True)  # RST keeps in high
-        self._pin_bl = self._gpio.get_pin("BL")
+        self._pin_bl = self._gpio.get_pin("BLK")
         self._bk_pwm_control = "pwm_output" in self._pin_bl.get_available_pinmode()
         if self._bk_pwm_control:
             self._pin_bl.set_mode("pwm_output")
@@ -109,8 +104,8 @@ class ST7789(object):
         else:
             self._pin_bl.set_mode("output_push_pull")
             self._pin_bl.write(False)  # BK keeps in low
-        self._width = width
-        self._height = height
+        self.WIDTH = width
+        self.HEIGHT = height
         self._invert = invert
         self._bgr = bgr
         self._fps = fps
@@ -119,17 +114,28 @@ class ST7789(object):
         self._offset_left = offset_left
         self._offset_top = offset_top
 
-        self._last_window = (self._width, self._height)
+        self._last_window = (self.WIDTH, self.HEIGHT)
+        self._last_img = None
 
         self.set_brightness(0)
         self._reset()
         self._init()
         self.clear()
         self.set_brightness(1)
-        self._last_img = None
 
     def _send(self, data):
-        self._spi.write(bytes(data))
+        MAX_SEND = 4080
+        if len(data) <= MAX_SEND:
+            self._spi.transfer(data)
+        else:
+            for i in range(0, len(data), MAX_SEND):
+                self._spi.transfer(data[i : i + MAX_SEND])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.turn_off()
 
     def set_brightness(self, brightness: float):
         """
@@ -144,11 +150,11 @@ class ST7789(object):
 
     def _command(self, data):
         self._pin_dc.write(False)
-        self._send([data & 0xFF])
+        self._spi.transfer([data & 0xFF])
         self._pin_dc.write(True)
 
     def _data(self, data):
-        self._send([data & 0xFF])
+        self._spi.transfer([data & 0xFF])
 
     def _reset(self):
         self._pin_rst.write(True)
@@ -248,12 +254,12 @@ class ST7789(object):
         Affects will be kept until the next setting be set.
         """
         if x1 is None:
-            x1 = self._width - 1
+            x1 = self.WIDTH - 1
         else:
             x1 -= 1
 
         if y1 is None:
-            y1 = self._height - 1
+            y1 = self.HEIGHT - 1
         else:
             y1 -= 1
 
@@ -306,7 +312,7 @@ class ST7789(object):
         image: OpenCV image in BGR format and same as screen resolution
         """
         data = cv2.cvtColor(image, cv2.COLOR_BGR2BGR565)  # It actually trans to RGB565
-        self._send(np.array(data).astype(int).flatten().tolist())
+        self._send(np.array(data).astype(np.int16).flatten().tolist())
 
     def fit_display(self, image, keep_ratio=True, no_enlarge=True):
         """
@@ -321,7 +327,7 @@ class ST7789(object):
         """
         Change image resolution to fit screen resolution
         """
-        target_size = (self._width, self._height)
+        target_size = (self.WIDTH, self.HEIGHT)
         image_size = (image.shape[1], image.shape[0])
         if target_size == image_size:
             return image
@@ -340,7 +346,7 @@ class ST7789(object):
         return image
 
     def _fit_window(self, image):
-        target_size = (self._width, self._height)
+        target_size = (self.WIDTH, self.HEIGHT)
         image_size = (image.shape[1], image.shape[0])
         assert (
             image_size[0] <= target_size[0] and image_size[1] <= target_size[1]
@@ -356,17 +362,17 @@ class ST7789(object):
     def _find_diff(self, img1, img2):
         non_black_pixels = np.argwhere((img1 - img2) != 0)
         if len(non_black_pixels) > 0:
-            x1 = np.min(non_black_pixels[:, 1])
-            y1 = np.min(non_black_pixels[:, 0])
-            x2 = np.max(non_black_pixels[:, 1])
-            y2 = np.max(non_black_pixels[:, 0])
+            x1 = np.min(non_black_pixels[:, 1])  # type: ignore
+            y1 = np.min(non_black_pixels[:, 0])  # type: ignore
+            x2 = np.max(non_black_pixels[:, 1])  # type: ignore
+            y2 = np.max(non_black_pixels[:, 0])  # type: ignore
             return int(x1), int(y1), int(x2) + 1, int(y2) + 1
         else:
             return None
 
     def display_diff(self, image):
         """
-        Write the difference between the provided image and the last image to the hardware.
+        Write only the different part between the provided image and the last image to the hardware.
         image: OpenCV image in BGR format and same as screen resolution
         """
         if self._last_img is None:
@@ -374,7 +380,7 @@ class ST7789(object):
             self._last_img = image
             return
         diff = self._find_diff(self._last_img, image)
-        self._last_img = image
+        self._last_img = image.copy()
         if diff is not None:
             self.set_window(*diff)
             self.display(image[diff[1] : diff[3], diff[0] : diff[2]])
@@ -385,7 +391,7 @@ class ST7789(object):
         """
         self.set_window(0, 0)
         self._send(
-            np.zeros((self._width, self._height, 2)).astype(int).flatten().tolist()
+            np.zeros((self.WIDTH, self.HEIGHT, 2)).astype(np.int16).flatten().tolist()
         )
 
     def clear_window(self):
@@ -394,7 +400,7 @@ class ST7789(object):
         """
         self._send(
             np.zeros((self._last_window[0], self._last_window[1], 2))
-            .astype(int)
+            .astype(np.int16)
             .flatten()
             .tolist()
         )
@@ -406,53 +412,3 @@ class ST7789(object):
         self.clear()
         self._command(_CMD.DISPOFF)
         self.set_brightness(0)
-
-
-if __name__ == "__main__":
-    screen = ST7789()
-    print("screen initialized")
-
-    def circle_test():
-        width = screen._width
-        height = screen._height
-        test_img = np.zeros((height, width, 3), dtype=np.uint8)
-        screen.display(test_img)
-        circle_num = 5
-        x = [width // 2 for _ in range(circle_num)]
-        y = [height // 2 for _ in range(circle_num)]
-        add_x = [1, 2, -2, -3, 2, -1]
-        add_y = [1, -3, 1, -4, 3, -3]
-        r = [60, 30, 20, 10, 5, 2]
-        colors = [
-            (255, 0, 0),
-            (0, 255, 0),
-            (0, 0, 255),
-            (255, 0, 255),
-            (255, 255, 0),
-            (0, 255, 255),
-        ]
-        bright = 1
-        add = False
-        while True:
-            img = test_img.copy()
-            for i in range(circle_num):
-                x[i] += add_x[i]
-                y[i] += add_y[i]
-                if x[i] >= width - r[i] or x[i] <= r[i]:
-                    add_x[i] = -add_x[i]
-                if y[i] >= height - r[i] or y[i] <= r[i]:
-                    add_y[i] = -add_y[i]
-                cv2.circle(img, (int(x[i]), int(y[i])), r[i], colors[i], 2)
-            t0 = time.perf_counter()
-            screen.display_diff(img)
-            dt = time.perf_counter() - t0
-            print(f"FPS: {1/dt:.2f} dt: {dt:.6f}")
-            bright *= 0.9 if not add else 1.1
-            if bright < 0.1 or bright > 1:
-                bright = max(0.1, min(1, bright))
-                add = not add
-
-    try:
-        circle_test()
-    except KeyboardInterrupt:
-        screen.turn_off()
