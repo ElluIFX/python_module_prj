@@ -141,7 +141,7 @@ class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
-        add_lock=True,
+        add_lock: bool = True,
     ) -> None:
         global _dev
         if _dev is None:
@@ -308,7 +308,7 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
 
 
 class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
-    def __init__(self, uart_index: int = 0, add_lock=True) -> None:
+    def __init__(self, uart_index: int = 0, add_lock: bool = True) -> None:
         global _dev
         if _dev is None:
             _dev = CH347()
@@ -489,7 +489,7 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
         cs: Literal[0, 1] = 0,
         cs_high: bool = False,
         auto_reset: bool = False,
-        add_lock=True,
+        add_lock: bool = True,
     ) -> None:
         global _dev
         if _dev is None:
@@ -613,7 +613,9 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
 
 class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
-        self, pinmap: Optional[Dict[str, CH347AvailablePins]] = None, add_lock=True
+        self,
+        pinmap: Optional[Dict[str, CH347AvailablePins]] = None,
+        add_lock: bool = True,
     ) -> None:
         global _dev
         if _dev is None:

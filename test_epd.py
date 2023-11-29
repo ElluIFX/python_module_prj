@@ -2,10 +2,9 @@ import os
 from math import floor
 
 import cv2
-import numpy as np
 
 from drivers import register_interface
-from drivers.epd import EPD
+from drivers.epd import EPD_BWR213
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 register_interface("ch347", "spi")
@@ -36,7 +35,7 @@ def vertical_text(
 
 
 def test_image():
-    with EPD() as epd:
+    with EPD_BWR213() as epd:
         cvimg = cv2.imread("./res/girl.jpg")
         cvimg = cv2.cvtColor(cvimg, cv2.COLOR_BGR2GRAY)
         cvimg = cv2.threshold(cvimg, 185, 255, cv2.THRESH_BINARY)[1]

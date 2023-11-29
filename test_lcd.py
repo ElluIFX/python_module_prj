@@ -4,8 +4,7 @@ import cv2
 import numpy as np
 
 from drivers.interface import register_interface
-from drivers.st7789 import ST7789
-from drivers.st7796 import ST7796
+from drivers.lcd import ST7789V, ST7796
 
 # register_interface("periphery", "spi", "/dev/spidev1.0")
 # register_interface("spidev", "spi", 1, 0)
@@ -23,11 +22,24 @@ register_interface(
     pinmap={"DC": "GPIO4", "RST": "GPIO7", "BLK": "GPIO6"},
 )
 
-# screen = ST7789()
-screen = ST7789(
-    width=240, height=240, offset_left=0, offset_top=0, rotation=270, invert=False
+screen = ST7789V(
+    width=240,
+    height=240,
+    rotation=270,
+    invert=False,
+    bgr=False,
+    offset_left=0,
+    offset_top=0,
 )
-# screen = ST7796(width=240, height=240, offset_left=0, offset_top=0)
+# screen = ST7796(
+#     width=240,
+#     height=240,
+#     rotation=270,
+#     invert=False,
+#     bgr=False,
+#     offset_left=0,
+#     offset_top=0,
+# )
 print(f"screen initialized with {screen.WIDTH}x{screen.HEIGHT}")
 
 
@@ -98,8 +110,8 @@ def screen_cast():
 
 
 try:
-    circle_test()
+    # circle_test()
     # bad_apple()
-    # screen_cast()
+    screen_cast()
 finally:
     screen.turn_off()

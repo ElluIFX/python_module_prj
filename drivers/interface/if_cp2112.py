@@ -118,7 +118,13 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
 
 
 class CP2112_I2CInterfaceBuilder(BaseInterfaceBuilder):
-    def __init__(self, clock=400000, retry=3, txrx_leds=True, add_lock=True) -> None:
+    def __init__(
+        self,
+        clock: int = 400000,
+        retry: int = 3,
+        txrx_leds: bool = True,
+        add_lock: bool = True,
+    ) -> None:
         global _dev
         if _dev is None:
             _dev = CP2112(clock=clock, retry=retry, txrx_leds=txrx_leds)
@@ -256,7 +262,9 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
 
 class CP2112_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
-        self, pinmap: Optional[Dict[str, CP2112AvailablePins]] = None, add_lock=True
+        self,
+        pinmap: Optional[Dict[str, CP2112AvailablePins]] = None,
+        add_lock: bool = True,
     ) -> None:
         global _dev
         if _dev is None:
