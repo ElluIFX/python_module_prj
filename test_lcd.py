@@ -24,8 +24,10 @@ register_interface(
 )
 
 # screen = ST7789()
-# screen = ST7789(width=240, height=240, offset_left=0, offset_top=0, rotation=270)
-screen = ST7796(width=240, height=240, offset_left=0, offset_top=0)
+screen = ST7789(
+    width=240, height=240, offset_left=0, offset_top=0, rotation=270, invert=False
+)
+# screen = ST7796(width=240, height=240, offset_left=0, offset_top=0)
 print(f"screen initialized with {screen.WIDTH}x{screen.HEIGHT}")
 
 
@@ -74,15 +76,30 @@ def bad_apple():
         if not ret:
             break
         frame_cnt += 1
-        frame = cv2.resize(frame, (screen.WIDTH, screen.HEIGHT))
+        # frame = cv2.resize(frame, (screen.WIDTH, screen.HEIGHT))
         t0 = time.perf_counter()
         screen.display(frame)
         dt = time.perf_counter() - t0
         print(f"FPS: {1/dt:.2f} dt: {dt:.6f} frame: {frame_cnt}/{frame_num}")
 
 
+def screen_cast():
+    import pyautogui
+
+    while True:
+        t0 = time.perf_counter()
+        img = pyautogui.screenshot()
+        img = np.array(img)
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+        # img = cv2.resize(img, (screen.WIDTH, screen.HEIGHT))
+        screen.display_diff(img)
+        dt = time.perf_counter() - t0
+        print(f"FPS: {1/dt:.2f} dt: {dt:.6f}")
+
+
 try:
-    # circle_test()
-    bad_apple()
+    circle_test()
+    # bad_apple()
+    # screen_cast()
 finally:
     screen.turn_off()

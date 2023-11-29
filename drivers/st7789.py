@@ -86,7 +86,7 @@ class ST7789(object):
         Create an instance of the ST7789V3 display using SPI communication.
         """
 
-        self._spi = request_interface("spi", "ST7789", 0, 60_000_000)
+        self._spi = request_interface("spi", "ST7789", 0, 100_000_000)
         print(f"SPI speed: {self._spi.speed_hz}")
         self._gpio = request_interface("gpio", "ST7789")
 
@@ -115,6 +115,7 @@ class ST7789(object):
         self._offset_top = offset_top
 
         self._last_window = (self.WIDTH, self.HEIGHT)
+        self._last_window_pos = (0, 0)
         self._last_img = None
 
         self.set_brightness(0)
@@ -264,6 +265,7 @@ class ST7789(object):
             y1 -= 1
 
         self._last_window = (x1 - x0 + 1, y1 - y0 + 1)
+        self._last_window_pos = (x0, y0)
 
         y0 += self._offset_top
         y1 += self._offset_top
@@ -306,24 +308,7 @@ class ST7789(object):
         else:
             self._command(_CMD.INVOFF)  # Don't invert display
 
-    def display(self, image):
-        """
-        Write the provided image to the hardware.
-        image: OpenCV image in BGR format and same as screen resolution
-        """
-        data = cv2.cvtColor(image, cv2.COLOR_BGR2BGR565)  # It actually trans to RGB565
-        self._send(np.array(data).astype(np.int16).flatten().tolist())
-
-    def fit_display(self, image, keep_ratio=True, no_enlarge=True):
-        """
-        Write the provided image to the hardware.
-        image: OpenCV image in BGR format in any resolution
-        """
-        image = self._fit_image(image, keep_ratio, no_enlarge)
-        self._fit_window(image)
-        self.display(image)
-
-    def _fit_image(self, image, keep_ratio=True, no_enlarge=True):
+    def _fit_image(self, image, keep_ratio, no_enlarge):
         """
         Change image resolution to fit screen resolution
         """
@@ -345,7 +330,7 @@ class ST7789(object):
             image = cv2.resize(image, dsize=(0, 0), fx=min_ratio, fy=min_ratio)
         return image
 
-    def _fit_window(self, image):
+    def _fit_window(self, image, set_window=True):
         target_size = (self.WIDTH, self.HEIGHT)
         image_size = (image.shape[1], image.shape[0])
         assert (
@@ -357,7 +342,28 @@ class ST7789(object):
         y0 = dy // 2
         x1 = x0 + image_size[0]
         y1 = y0 + image_size[1]
-        self.set_window(x0, y0, x1, y1)
+        if set_window:
+            self.set_window(x0, y0, x1, y1)
+        return x0, y0, x1, y1
+
+    def display_raw(self, image):
+        data = cv2.cvtColor(image, cv2.COLOR_BGR2BGR565)  # It actually trans to RGB565
+        self._send(np.array(data).astype(np.int16).flatten().tolist())
+
+    def display(self, image, fit=True, keep_ratio=True, no_enlarge=True):
+        """
+        Write the provided image to the hardware.
+        image: OpenCV image in BGR format and same as screen resolution
+        fit: If True, the image will be resized to fit the screen resolution
+        keep_ratio: Keep the ratio of the image when fit is True
+        no_enlarge: If True, the image will not be enlarged when fit is True
+        """
+        if fit and image.shape[:2] != (self.WIDTH, self.HEIGHT):
+            image = self._fit_image(image, keep_ratio, no_enlarge)
+            self._fit_window(image)
+        elif self._last_window != (self.WIDTH, self.HEIGHT):
+            self.set_window(0, 0)
+        self.display_raw(image)
 
     def _find_diff(self, img1, img2):
         non_black_pixels = np.argwhere((img1 - img2) != 0)
@@ -370,11 +376,19 @@ class ST7789(object):
         else:
             return None
 
-    def display_diff(self, image):
+    def display_diff(self, image, fit=True, keep_ratio=True, no_enlarge=True):
         """
         Write only the different part between the provided image and the last image to the hardware.
         image: OpenCV image in BGR format and same as screen resolution
+        fit: If True, the image will be resized to fit the screen resolution
+        keep_ratio: Keep the ratio of the image when fit is True
+        no_enlarge: If True, the image will not be enlarged when fit is True
         """
+        if fit and image.shape[:2] != (self.WIDTH, self.HEIGHT):
+            image = self._fit_image(image, keep_ratio, no_enlarge)
+            xb, yb, _, _ = self._fit_window(image)
+        else:
+            xb, yb = 0, 0
         if self._last_img is None:
             self.display(image)
             self._last_img = image
@@ -382,8 +396,9 @@ class ST7789(object):
         diff = self._find_diff(self._last_img, image)
         self._last_img = image.copy()
         if diff is not None:
-            self.set_window(*diff)
-            self.display(image[diff[1] : diff[3], diff[0] : diff[2]])
+            x1, y1, x2, y2 = diff
+            self.set_window(x1 + xb, y1 + yb, x2 + xb, y2 + yb)
+            self.display_raw(image[y1:y2, x1:x2])
 
     def clear(self):
         """
