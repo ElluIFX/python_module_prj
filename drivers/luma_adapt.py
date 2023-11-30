@@ -1,7 +1,11 @@
+import time
+
+from luma.core.interface import serial  # noqa: F401
+
 from .interface import request_interface
 
 
-class i2c(object):
+class i2c:
     def __init__(self, address=0x3C):
         self._cmd_mode = 0x00
         self._data_mode = 0x40
@@ -38,4 +42,33 @@ class i2c(object):
             self._bus.write_reg_data(self._data_mode, data)
 
     def cleanup(self):
-        pass
+        self._bus.destroy()
+
+
+class spi:
+    def __init__(self, mode=0, speed_hz=10_000_000):
+        self._spi = request_interface("spi", "luma.core", mode, speed_hz)
+        self._gpio = request_interface("gpio", "luma.core")
+        self._rst = self._gpio.get_pin("RST")
+        self._dc = self._gpio.get_pin("DC")
+        self._rst.set_mode("output_push_pull")
+        self._dc.set_mode("output_push_pull")
+        self._rst.write(True)
+        self._dc.write(True)
+        time.sleep(0.01)
+        self._rst.write(False)
+        time.sleep(0.05)
+        self._rst.write(True)
+        time.sleep(0.1)
+
+    def command(self, data):
+        self._dc.write(False)
+        self._spi.transfer(bytes(data))
+        self._dc.write(True)
+
+    def data(self, data):
+        self._spi.transfer(bytes(data))
+
+    def cleanup(self):
+        self._spi.destroy()
+        self._gpio.destroy()

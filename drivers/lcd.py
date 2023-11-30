@@ -7,142 +7,7 @@ import numpy as np
 from .interface import request_interface
 
 
-class _ST7789V:
-    # refer to ST7789V datasheet for details
-    NOP = 0x00
-    SWRESET = 0x01
-    RDDID = 0x04
-    RDDST = 0x09
-
-    SLPIN = 0x10
-    SLPOUT = 0x11
-    PTLON = 0x12
-    NORON = 0x13
-
-    INVOFF = 0x20
-    INVON = 0x21
-    DISPOFF = 0x28
-    DISPON = 0x29
-
-    CASET = 0x2A
-    RASET = 0x2B
-    RAMWR = 0x2C
-    RAMRD = 0x2E
-
-    PTLAR = 0x30
-    MADCTL = 0x36
-    COLMOD = 0x3A
-
-    RAMCTRL = 0xB0
-    FRMCTR1 = 0xB1
-    FRMCTR2 = 0xB2
-    FRMCTR3 = 0xB3
-    INVCTR = 0xB4
-    DISSET5 = 0xB6
-
-    GCTRL = 0xB7
-    GTADJ = 0xB8
-    VCOMS = 0xBB
-
-    LCMCTRL = 0xC0
-    IDSET = 0xC1
-    VDVVRHEN = 0xC2
-    VRHS = 0xC3
-    VDVS = 0xC4
-    VMCTR1 = 0xC5
-    FRCTRL2 = 0xC6
-    CABCCTRL = 0xC7
-
-    RDID1 = 0xDA
-    RDID2 = 0xDB
-    RDID3 = 0xDC
-    RDID4 = 0xDD
-
-    GMCTRP1 = 0xE0
-    GMCTRN1 = 0xE1
-
-    PWCTR6 = 0xFC
-
-    MADCTL_BGR = 0x08
-    MADCTL_MV = 0x20
-    MADCTL_MX = 0x40
-    MADCTL_MY = 0x80
-
-
-class _ST7796:
-    NOP = 0x00
-    SWRST = 0x01
-    RDDID = 0x04
-    RDDST = 0x09
-
-    SLPIN = 0x10
-    SLPOUT = 0x11
-    PTLON = 0x12
-    NORON = 0x13
-
-    RDMODE = 0x0A
-    RDMADCTL = 0x0B
-    RDPIXFMT = 0x0C
-    RDIMGFMT = 0x0A
-    RDSELFDIAG = 0x0F
-
-    INVOFF = 0x20
-    INVON = 0x21
-    DISPOFF = 0x28
-    DISPON = 0x29
-    CASET = 0x2A
-    PASET = 0x2B
-    RASET = 0x2B
-    RAMWR = 0x2C
-    RAMRD = 0x2E
-
-    PTLAR = 0x30
-    VSCRDEF = 0x33
-    MADCTL = 0x36
-    VSCRSADD = 0x37
-    PIXFMT = 0x3A
-    MAD_MY = 0x80
-    MAD_MX = 0x40
-    MAD_MV = 0x20
-    MAD_ML = 0x10
-    MAD_BGR = 0x08
-    MAD_MH = 0x04
-    MAD_RGB = 0x00
-    INVOFF = 0x20
-    INVON = 0x21
-
-    WRDISBV = 0x51
-    RDDISBV = 0x52
-    WRCTRLD = 0x53
-
-    FRMCTR1 = 0xB1
-    FRMCTR2 = 0xB2
-    FRMCTR3 = 0xB3
-    INVCTR = 0xB4
-    DFUNCTR = 0xB6
-
-    PWCTR1 = 0xC0
-    PWCTR2 = 0xC1
-    PWCTR3 = 0xC2
-
-    VMCTR1 = 0xC5
-    VMCOFF = 0xC6
-
-    RDID4 = 0xD3
-
-    GMCTRP1 = 0xE0
-    GMCTRN1 = 0xE1
-
-    MADCTL_MY = 0x80
-    MADCTL_MX = 0x40
-    MADCTL_MV = 0x20
-    MADCTL_ML = 0x10
-    MADCTL_RGB = 0x00
-    MADCTL_BGR = 0x08
-    MADCTL_MH = 0x04
-
-
-class LcdClsBase(object):
+class LCDBase(object):
     def __init__(
         self,
         width: int,
@@ -158,7 +23,6 @@ class LcdClsBase(object):
         """
 
         self._spi = request_interface("spi", "ST7789", 0, 100_000_000)
-        print(f"SPI speed: {self._spi.speed_hz}")
         self._gpio = request_interface("gpio", "ST7789")
 
         self._pin_dc = self._gpio.get_pin("DC")
@@ -396,7 +260,69 @@ class LcdClsBase(object):
         self.turn_off()
 
 
-class ST7789V(LcdClsBase):
+class _ST7789V:
+    # refer to ST7789V datasheet for details
+    NOP = 0x00
+    SWRESET = 0x01
+    RDDID = 0x04
+    RDDST = 0x09
+
+    SLPIN = 0x10
+    SLPOUT = 0x11
+    PTLON = 0x12
+    NORON = 0x13
+
+    INVOFF = 0x20
+    INVON = 0x21
+    DISPOFF = 0x28
+    DISPON = 0x29
+
+    CASET = 0x2A
+    RASET = 0x2B
+    RAMWR = 0x2C
+    RAMRD = 0x2E
+
+    PTLAR = 0x30
+    MADCTL = 0x36
+    COLMOD = 0x3A
+
+    RAMCTRL = 0xB0
+    FRMCTR1 = 0xB1
+    FRMCTR2 = 0xB2
+    FRMCTR3 = 0xB3
+    INVCTR = 0xB4
+    DISSET5 = 0xB6
+
+    GCTRL = 0xB7
+    GTADJ = 0xB8
+    VCOMS = 0xBB
+
+    LCMCTRL = 0xC0
+    IDSET = 0xC1
+    VDVVRHEN = 0xC2
+    VRHS = 0xC3
+    VDVS = 0xC4
+    VMCTR1 = 0xC5
+    FRCTRL2 = 0xC6
+    CABCCTRL = 0xC7
+
+    RDID1 = 0xDA
+    RDID2 = 0xDB
+    RDID3 = 0xDC
+    RDID4 = 0xDD
+
+    GMCTRP1 = 0xE0
+    GMCTRN1 = 0xE1
+
+    PWCTR6 = 0xFC
+
+    MADCTL_BGR = 0x08
+    MADCTL_MV = 0x20
+    MADCTL_MX = 0x40
+    MADCTL_MY = 0x80
+
+
+class ST7789V(LCDBase):
     """Representation of an ST7789 TFT LCD."""
 
     def _init_cmd(self):
@@ -523,7 +449,80 @@ class ST7789V(LcdClsBase):
         self._cmd(_ST7789V.RAMWR)  # write to RAM
 
 
-class ST7796(LcdClsBase):
+class _ST7796:
+    NOP = 0x00
+    SWRST = 0x01
+    RDDID = 0x04
+    RDDST = 0x09
+
+    SLPIN = 0x10
+    SLPOUT = 0x11
+    PTLON = 0x12
+    NORON = 0x13
+
+    RDMODE = 0x0A
+    RDMADCTL = 0x0B
+    RDPIXFMT = 0x0C
+    RDIMGFMT = 0x0A
+    RDSELFDIAG = 0x0F
+
+    INVOFF = 0x20
+    INVON = 0x21
+    DISPOFF = 0x28
+    DISPON = 0x29
+    CASET = 0x2A
+    PASET = 0x2B
+    RASET = 0x2B
+    RAMWR = 0x2C
+    RAMRD = 0x2E
+
+    PTLAR = 0x30
+    VSCRDEF = 0x33
+    MADCTL = 0x36
+    VSCRSADD = 0x37
+    PIXFMT = 0x3A
+    MAD_MY = 0x80
+    MAD_MX = 0x40
+    MAD_MV = 0x20
+    MAD_ML = 0x10
+    MAD_BGR = 0x08
+    MAD_MH = 0x04
+    MAD_RGB = 0x00
+    INVOFF = 0x20
+    INVON = 0x21
+
+    WRDISBV = 0x51
+    RDDISBV = 0x52
+    WRCTRLD = 0x53
+
+    FRMCTR1 = 0xB1
+    FRMCTR2 = 0xB2
+    FRMCTR3 = 0xB3
+    INVCTR = 0xB4
+    DFUNCTR = 0xB6
+
+    PWCTR1 = 0xC0
+    PWCTR2 = 0xC1
+    PWCTR3 = 0xC2
+
+    VMCTR1 = 0xC5
+    VMCOFF = 0xC6
+
+    RDID4 = 0xD3
+
+    GMCTRP1 = 0xE0
+    GMCTRN1 = 0xE1
+
+    MADCTL_MY = 0x80
+    MADCTL_MX = 0x40
+    MADCTL_MV = 0x20
+    MADCTL_ML = 0x10
+    MADCTL_RGB = 0x00
+    MADCTL_BGR = 0x08
+    MADCTL_MH = 0x04
+
+
+class ST7796(LCDBase):
     def _init_cmd(self):
         # Initialize the display.
         self._cmd(0x01)  # Software reset
