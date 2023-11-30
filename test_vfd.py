@@ -6,7 +6,7 @@ import numpy as np
 from drivers.interface import register_interface
 from drivers.vfd import VFD
 
-register_interface("ch347", "spi", True, cs=1)
+register_interface("ch347", "spi")
 
 
 class fps_counter:

@@ -63,11 +63,11 @@ class spi:
 
     def command(self, data):
         self._dc.write(False)
-        self._spi.transfer(bytes(data))
+        self._spi.write(bytes(data))
         self._dc.write(True)
 
     def data(self, data):
-        self._spi.transfer(bytes(data))
+        self._spi.write(bytes(data))
 
     def cleanup(self):
         self._spi.destroy()

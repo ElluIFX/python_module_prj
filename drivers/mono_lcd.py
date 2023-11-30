@@ -45,13 +45,13 @@ class ST7302:
 
     def _cmd(self, data):
         self._pin_dc.write(False)
-        self._spi.transfer([data & 0xFF])
+        self._spi.write([data & 0xFF])
         self._pin_dc.write(True)
 
     def _data(self, data):
         if isinstance(data, int):
             data = [data & 0xFF]
-        self._spi.transfer(data)
+        self._spi.write(data)
 
     def _write_cmd(self, cmd, data):
         self._cmd(cmd)
@@ -61,10 +61,10 @@ class ST7302:
     def _write(self, data):
         MAX_SEND = 4080
         if len(data) <= MAX_SEND:
-            self._spi.transfer(data)
+            self._spi.write(data)
         else:
             for i in range(0, len(data), MAX_SEND):
-                self._spi.transfer(data[i : i + MAX_SEND])
+                self._spi.write(data[i : i + MAX_SEND])
 
     def reset_hardware(self):
         self._pin_rst.write(True)

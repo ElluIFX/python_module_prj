@@ -111,7 +111,7 @@ def screen_cast():
 
 try:
     # circle_test()
-    # bad_apple()
-    screen_cast()
+    bad_apple()
+    # screen_cast()
 finally:
     screen.turn_off()

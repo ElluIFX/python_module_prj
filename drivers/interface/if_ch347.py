@@ -3,6 +3,8 @@ from functools import lru_cache
 from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
 
+from loguru import logger
+
 from .driver.ch347 import CH347
 from .errors import (
     InterfacefIOError,
@@ -23,6 +25,25 @@ from .utils import FakeLock
 
 _dev: Optional[CH347] = None  # device should be opened only once
 _lock = FakeLock()
+
+
+def _init_dev(add_lock: bool = True):
+    global _dev
+    if _dev is None:
+        _dev = CH347()
+        if add_lock:
+            global _lock
+            _lock = Lock()
+        if not _dev.open_device():
+            raise InterfaceInitError("CH347 open failed")
+        if not _dev.set_timeout(100, 100):
+            raise InterfaceInitError("CH347 set timeout failed")
+        info = _dev.get_device_info()
+        if info is None:
+            raise InterfaceInitError("CH347 get info failed")
+        logger.debug(
+            f"CH347:{info.DeviceIndex} Init Success (Mode={info.ChipMode}, USBSpeed={info.UsbSpeedType}): {info.DevicePath.decode()}"
+        )
 
 
 class CH347_I2CMessage(I2CMessageTemplate):
@@ -143,14 +164,8 @@ class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
         clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
         add_lock: bool = True,
     ) -> None:
-        global _dev
-        if _dev is None:
-            _dev = CH347()
-            if _dev.open_device() is None:
-                raise InterfaceInitError("CH347 open failed")
-            if add_lock:
-                global _lock
-                _lock = Lock()
+        _init_dev(add_lock)
+        assert _dev is not None
         clock_dict: Dict[int, Literal[0, 1, 2, 3, 4, 5, 6]] = {
             20000: 0,
             50000: 4,
@@ -309,12 +324,8 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
 
 class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, uart_index: int = 0, add_lock: bool = True) -> None:
-        global _dev
-        if _dev is None:
-            _dev = CH347()
-            if add_lock:
-                global _lock
-                _lock = Lock()
+        _init_dev(add_lock)
+        assert _dev is not None
         # check if uart_index is valid
         if _dev.open_uart(uart_index) is None:
             raise InterfaceInitError(f"CH347 open uart-{uart_index} failed")
@@ -451,13 +462,13 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
         if self._auto_reset:
             self._reset(False)
 
-    def write(self, data: Union[bytes, List[int]]):
+    def write(self, data: Union[bytes, List[int]]) -> None:
         assert _dev is not None
         with _lock:
             cs = (0x80) if self._enable_cs else 0x00
             self._check()
-            if not _dev.spi_write(cs, bytes(data)):
-                # if _dev.spi_read(cs, bytes(data), 0) is None:
+            # if not _dev.spi_write(cs, bytes(data)):
+            if _dev.spi_read(cs, bytes(data), 0) is None:
                 raise InterfacefIOError("SPI write failed")
 
     def read(self, length: int) -> bytes:
@@ -491,14 +502,8 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
         auto_reset: bool = False,
         add_lock: bool = True,
     ) -> None:
-        global _dev
-        if _dev is None:
-            _dev = CH347()
-            if add_lock:
-                global _lock
-                _lock = Lock()
-            if not _dev.open_device():
-                raise InterfaceInitError("CH347 open failed")
+        _init_dev(add_lock)
+        assert _dev is not None
         self._cs: Literal[0, 1] = cs
         self._enable_cs = enable_cs
         self._cs_high = cs_high
@@ -617,14 +622,7 @@ class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):
         pinmap: Optional[Dict[str, CH347AvailablePins]] = None,
         add_lock: bool = True,
     ) -> None:
-        global _dev
-        if _dev is None:
-            _dev = CH347()
-            if not _dev.open_device():
-                raise InterfaceInitError("CH347 open failed")
-            if add_lock:
-                global _lock
-                _lock = Lock()
+        _init_dev(add_lock)
         self._pinmap = pinmap
         self.dev_type = "gpio"
 

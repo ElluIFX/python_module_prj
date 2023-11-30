@@ -53,14 +53,14 @@ class EPD_Base(object):
 
     def _send_command(self, command: int):
         self._io.write("DC", False)
-        self._spi.transfer([command])
+        self._spi.write([command])
         self._io.write("DC", True)
 
     def _send_data(self, data: int):
-        self._spi.transfer([data])
+        self._spi.write([data])
 
     def _send_data2(self, data):
-        self._spi.transfer(data)
+        self._spi.write(data)
 
     def _wait_idle(self):
         while self._io.read("BUSY"):
