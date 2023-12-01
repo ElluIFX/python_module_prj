@@ -35,10 +35,6 @@ class VFD:
     def __init__(self, width: int = 256, height: int = 64) -> None:
         """
         Initialize VFD driver
-
-        Args:
-            port (str): Serial port name
-            baudrate (int): Serial baudrate
         """
         self._ser = None
         self._spi = None

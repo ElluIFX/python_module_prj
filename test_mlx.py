@@ -6,7 +6,7 @@ from matplotlib.animation import FuncAnimation
 from drivers.interface import register_interface
 from drivers.mlx90614 import MLX90614
 
-register_interface("cp2112", "i2c", clock=100000)
+register_interface("ch347", "i2c", clock=100000)
 sensor = MLX90614()
 
 # Initialize empty lists to store temperature data

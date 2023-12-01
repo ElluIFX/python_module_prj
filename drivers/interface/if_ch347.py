@@ -1,3 +1,4 @@
+import atexit
 import time
 from functools import lru_cache
 from threading import Lock
@@ -36,14 +37,24 @@ def _init_dev(add_lock: bool = True):
             _lock = Lock()
         if not _dev.open_device():
             raise InterfaceInitError("CH347 open failed")
-        if not _dev.set_timeout(100, 100):
-            raise InterfaceInitError("CH347 set timeout failed")
+        # if not _dev.set_timeout(100, 100):
+        #     raise InterfaceInitError("CH347 set timeout failed")
         info = _dev.get_device_info()
         if info is None:
             raise InterfaceInitError("CH347 get info failed")
         logger.debug(
             f"CH347:{info.DeviceIndex} Init Success (Mode={info.ChipMode}, USBSpeed={info.UsbSpeedType}): {info.DevicePath.decode()}"
         )
+
+
+def _close_dev():
+    global _dev
+    if _dev is not None:
+        _dev.close_device()
+        _dev = None
+
+
+atexit.register(_close_dev)
 
 
 class CH347_I2CMessage(I2CMessageTemplate):
@@ -463,6 +474,10 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
             self._reset(False)
 
     def write(self, data: Union[bytes, List[int]]) -> None:
+        if len(data) > 4080:
+            for i in range(0, len(data), 4080):
+                self.write(data[i : i + 4080])
+            return
         assert _dev is not None
         with _lock:
             cs = (0x80) if self._enable_cs else 0x00

@@ -39,6 +39,13 @@ class LCDBase(object):
         else:
             self._pin_bl.set_mode("output_push_pull")
             self._pin_bl.write(False)  # BK keeps in low
+        try:
+            self._pin_cs = self._gpio.get_pin("CS")
+            self._pin_cs.set_mode("output_push_pull")
+            self._pin_cs.write(True)
+            self._soft_cs = True
+        except Exception:
+            self._soft_cs = False
         self.WIDTH = width
         self.HEIGHT = height
         self._invert = invert
@@ -69,21 +76,28 @@ class LCDBase(object):
 
     def _cmd(self, data):
         self._pin_dc.write(False)
+        if self._soft_cs:
+            self._pin_cs.write(False)
         self._spi.write([data & 0xFF])
+        if self._soft_cs:
+            self._pin_cs.write(True)
         self._pin_dc.write(True)
 
     def _data(self, data):
         if isinstance(data, int):
             data = [data & 0xFF]
+        if self._soft_cs:
+            self._pin_cs.write(False)
         self._spi.write(data)
+        if self._soft_cs:
+            self._pin_cs.write(True)
 
-    def _write(self, data):
-        MAX_SEND = 4080
-        if len(data) <= MAX_SEND:
-            self._spi.write(data)
-        else:
-            for i in range(0, len(data), MAX_SEND):
-                self._spi.write(data[i : i + MAX_SEND])
+    def _write(self, data) -> None:
+        if self._soft_cs:
+            self._pin_cs.write(False)
+        self._spi.write(data)
+        if self._soft_cs:
+            self._pin_cs.write(True)
 
     def reset_hardware(self):
         self._pin_rst.write(True)

@@ -53,6 +53,13 @@ class spi:
         self._dc = self._gpio.get_pin("DC")
         self._rst.set_mode("output_push_pull")
         self._dc.set_mode("output_push_pull")
+        try:
+            self._cs = self._gpio.get_pin("CS")
+            self._cs.set_mode("output_push_pull")
+            self._cs.write(True)
+            self._soft_cs = True
+        except Exception:
+            self._soft_cs = False
         self._rst.write(True)
         self._dc.write(True)
         time.sleep(0.01)
@@ -63,11 +70,19 @@ class spi:
 
     def command(self, data):
         self._dc.write(False)
+        if self._soft_cs:
+            self._cs.write(False)
         self._spi.write(bytes(data))
+        if self._soft_cs:
+            self._cs.write(True)
         self._dc.write(True)
 
     def data(self, data):
+        if self._soft_cs:
+            self._cs.write(False)
         self._spi.write(bytes(data))
+        if self._soft_cs:
+            self._cs.write(True)
 
     def cleanup(self):
         self._spi.destroy()

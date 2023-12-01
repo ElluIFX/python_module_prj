@@ -31,6 +31,13 @@ class ST7302:
         self._pin_rst.set_mode("output_push_pull")
         self._pin_dc.write(True)  # DC keeps in high
         self._pin_rst.write(True)  # RST keeps in high
+        try:
+            self._pin_cs = self._gpio.get_pin("CS")
+            self._pin_cs.set_mode("output_push_pull")
+            self._pin_cs.write(True)
+            self._soft_cs = True
+        except Exception:
+            self._soft_cs = False
 
         self._inv = inverse
         self._rot = rotation
@@ -45,26 +52,33 @@ class ST7302:
 
     def _cmd(self, data):
         self._pin_dc.write(False)
+        if self._soft_cs:
+            self._pin_cs.write(False)
         self._spi.write([data & 0xFF])
+        if self._soft_cs:
+            self._pin_cs.write(True)
         self._pin_dc.write(True)
 
     def _data(self, data):
         if isinstance(data, int):
             data = [data & 0xFF]
+        if self._soft_cs:
+            self._pin_cs.write(False)
         self._spi.write(data)
+        if self._soft_cs:
+            self._pin_cs.write(True)
+
+    def _write(self, data) -> None:
+        if self._soft_cs:
+            self._pin_cs.write(False)
+        self._spi.write(data)
+        if self._soft_cs:
+            self._pin_cs.write(True)
 
     def _write_cmd(self, cmd, data):
         self._cmd(cmd)
         if data is not None:
             self._data(data)
-
-    def _write(self, data):
-        MAX_SEND = 4080
-        if len(data) <= MAX_SEND:
-            self._spi.write(data)
-        else:
-            for i in range(0, len(data), MAX_SEND):
-                self._spi.write(data[i : i + MAX_SEND])
 
     def reset_hardware(self):
         self._pin_rst.write(True)
