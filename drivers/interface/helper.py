@@ -41,7 +41,6 @@ def register_interface(
     clock: int = 400000,
     retry: int = 3,
     txrx_leds: bool = True,
-    add_lock: bool = True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CP2112_I2CInterfaceBuilder":
     ...
@@ -52,7 +51,6 @@ def register_interface(
     driver_name: Literal["cp2112"],
     driver_type: Literal["gpio"],
     pinmap: Optional[Dict[str, "CP2112AvailablePins"]] = None,
-    add_lock: bool = True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CP2112_GPIOInterfaceBuilder":
     ...
@@ -63,7 +61,6 @@ def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["i2c"],
     clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
-    add_lock: bool = True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_I2CInterfaceBuilder":
     ...
@@ -74,7 +71,6 @@ def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["uart"],
     uart_index: int = 0,
-    add_lock: bool = True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_UARTInterfaceBuilder":
     ...
@@ -88,7 +84,6 @@ def register_interface(
     cs: Literal[0, 1] = 0,
     cs_high: bool = False,
     auto_reset: bool = False,
-    add_lock: bool = True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_SPIInterfaceBuilder":
     ...
@@ -99,7 +94,6 @@ def register_interface(
     driver_name: Literal["ch347"],
     driver_type: Literal["gpio"],
     pinmap: Optional[Dict[str, "CH347AvailablePins"]] = None,
-    add_lock: bool = True,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_GPIOInterfaceBuilder":
     ...

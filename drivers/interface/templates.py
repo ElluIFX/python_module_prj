@@ -41,7 +41,7 @@ class BaseInterfaceTemplate:
         """
         Reopen the interface
         """
-        ...
+        raise NotImplementedError("Interface can not be reopened")
 
     @final
     def destroy(self):

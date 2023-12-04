@@ -14,6 +14,7 @@ class MODE:
     full = 1
     partial = 2
     grayscale = 3
+    fast = 4
 
 
 class EPD_Base(object):
@@ -23,7 +24,7 @@ class EPD_Base(object):
 
     def __init__(self, auto_sleep: bool = True):
         self._mode = MODE.uninit
-        self._spi = request_interface("spi", "EPD", 0, 10_000_000)
+        self._spi = request_interface("spi", "EPD", 0, 4_000_000)
         self._io = request_interface("gpio", "EPD")
         self._io.set_mode("RST", "output_push_pull")
         self._io.set_mode("DC", "output_push_pull")
@@ -103,23 +104,28 @@ class EPD_Base(object):
     def _init_grayscale_cmd(self):
         raise NotImplementedError
 
+    def _init_fast_cmd(self):
+        raise NotImplementedError
+
     def _sleep_cmd(self):
         self._send_command(0x10)
         self._send_data(0x01)
 
-    def _init(self, target_mode: int = MODE.full):
+    def _init(self, target_mode: int = MODE.full, reset: bool = True):
         logger.debug(f"EPD init to mode {target_mode}")
-        self._reset()
-        self._wait_idle()
+        if reset:
+            self._reset()
+            self._wait_idle()
         {
             MODE.full: self._init_full_cmd,
             MODE.partial: self._init_partial_cmd,
             MODE.grayscale: self._init_grayscale_cmd,
+            MODE.fast: self._init_fast_cmd,
         }[target_mode]()
         self._wait_idle()
         self._mode = target_mode
 
-    def _img_to_data_bw_fast(self, image, invert: bool = False):
+    def _img_to_data_bw(self, image, invert: bool = False):
         """
         转换图片为数据 (黑白屏 双色模式)
         image: PIL图片/cv2 ndarray
@@ -140,31 +146,29 @@ class EPD_Base(object):
         else:
             return bytearray((~i) & 0xFF for i in img.tobytes("raw"))
 
-    def _img_to_data_bw(self, image):
+    def _img_to_data_bw_raw(self, image):
         """
-        转换图片为数据 (双色模式)
+        转换图片为数据 (黑白屏 双色模式)
         image: PIL图片/cv2 ndarray
         """
         if not isinstance(image, Image.Image):
             image = Image.fromarray(image)
         imwidth, imheight = image.size
+        if imwidth == self.WIDTH and imheight == self.HEIGHT:
+            pass
+        elif imwidth == self.HEIGHT and imheight == self.WIDTH:
+            image = image.rotate(90, expand=True)
+            imwidth, imheight = image.size
+            assert imwidth == self.WIDTH and imheight == self.HEIGHT
+        else:
+            raise ValueError(f"Image size error: {imwidth}x{imheight}")
         image_monocolor = image.convert("1")
         pixels = image_monocolor.load()
         buf = [0xFF] * (int(self.WIDTH / 8) * self.HEIGHT)
-        if imwidth == self.WIDTH and imheight == self.HEIGHT:
-            for y in range(imheight):
-                for x in range(imwidth):
-                    if pixels[x, y] == 0:
-                        buf[int((x + y * self.WIDTH) / 8)] &= ~(0x80 >> (x % 8))
-        elif imwidth == self.HEIGHT and imheight == self.WIDTH:
-            for y in range(imheight):
-                for x in range(imwidth):
-                    newx = y
-                    newy = self.HEIGHT - x - 1
-                    if pixels[x, y] == 0:
-                        buf[int((newx + newy * self.WIDTH) / 8)] &= ~(0x80 >> (y % 8))
-        else:
-            raise ValueError(f"Image size error: {imwidth}x{imheight}")
+        for y in range(imheight):
+            for x in range(imwidth):
+                if pixels[x, y] == 0:
+                    buf[int((x + y * self.WIDTH) / 8)] &= ~(0x80 >> (x % 8))
         return buf
 
     def _img_to_data_4gray(self, image):
@@ -175,45 +179,33 @@ class EPD_Base(object):
         if not isinstance(image, Image.Image):
             image = Image.fromarray(image)
         imwidth, imheight = image.size
+        if imwidth == self.WIDTH and imheight == self.HEIGHT:
+            pass
+        elif imwidth == self.HEIGHT and imheight == self.WIDTH:
+            image = image.rotate(90, expand=True)
+            imwidth, imheight = image.size
+            assert imwidth == self.WIDTH and imheight == self.HEIGHT
+        else:
+            raise ValueError(f"Image size error: {imwidth}x{imheight}")
         image_monocolor = image.convert("L")
         imwidth, imheight = image_monocolor.size
         pixels = image_monocolor.load()
         buf = [0xFF] * (int(self.WIDTH / 4) * self.HEIGHT)
         i = 0
-        if imwidth == self.WIDTH and imheight == self.HEIGHT:
-            for y in range(imheight):
-                for x in range(imwidth):
-                    if pixels[x, y] == 0xC0:
-                        pixels[x, y] = 0x80
-                    elif pixels[x, y] == 0x80:
-                        pixels[x, y] = 0x40
-                    i = i + 1
-                    if i % 4 == 0:
-                        buf[int((x + (y * self.WIDTH)) / 4)] = (
-                            (pixels[x - 3, y] & 0xC0)
-                            | (pixels[x - 2, y] & 0xC0) >> 2
-                            | (pixels[x - 1, y] & 0xC0) >> 4
-                            | (pixels[x, y] & 0xC0) >> 6
-                        )
-        elif imwidth == self.HEIGHT and imheight == self.WIDTH:
+        for y in range(imheight):
             for x in range(imwidth):
-                for y in range(imheight):
-                    newx = y
-                    newy = self.HEIGHT - x - 1
-                    if pixels[x, y] == 0xC0:
-                        pixels[x, y] = 0x80
-                    elif pixels[x, y] == 0x80:
-                        pixels[x, y] = 0x40
-                    i = i + 1
-                    if i % 4 == 0:
-                        buf[int((newx + (newy * self.WIDTH)) / 4)] = (
-                            (pixels[x, y - 3] & 0xC0)
-                            | (pixels[x, y - 2] & 0xC0) >> 2
-                            | (pixels[x, y - 1] & 0xC0) >> 4
-                            | (pixels[x, y] & 0xC0) >> 6
-                        )
-        else:
-            raise ValueError(f"Image size error: {imwidth}x{imheight}")
+                if pixels[x, y] == 0xC0:
+                    pixels[x, y] = 0x80
+                elif pixels[x, y] == 0x80:
+                    pixels[x, y] = 0x40
+                i = i + 1
+                if i % 4 == 0:
+                    buf[int((x + (y * self.WIDTH)) / 4)] = (
+                        (pixels[x - 3, y] & 0xC0)
+                        | (pixels[x - 2, y] & 0xC0) >> 2
+                        | (pixels[x - 1, y] & 0xC0) >> 4
+                        | (pixels[x, y] & 0xC0) >> 6
+                    )
         return buf
 
     @property
@@ -268,7 +260,7 @@ class EPD_Base(object):
                 image = np.pad(  # type: ignore
                     image,
                     ((top_pad, bottom_pad), (0, 0)),  # type: ignore
-                    mode="constant",
+                    mode="constant",  # type: ignore
                     constant_values=255,
                 )
             fin_size = (image.shape[1], image.shape[0])
@@ -356,7 +348,7 @@ class EPD_BWR_213(EPD_Base):
         if image_black is not None:
             self._set_cursor(0x00, 0x00)
             self._send_command(0x24)
-            image_buf_b = self._img_to_data_bw_fast(image_black)
+            image_buf_b = self._img_to_data_bw(image_black)
             self._send_data2(image_buf_b)
         elif clear_none:
             self._set_cursor(0x00, 0x00)
@@ -365,7 +357,7 @@ class EPD_BWR_213(EPD_Base):
         if image_red is not None:
             self._set_cursor(0x00, 0x00)
             self._send_command(0x26)
-            image_buf_r = self._img_to_data_bw_fast(image_red, invert=True)
+            image_buf_r = self._img_to_data_bw(image_red, invert=True)
             self._send_data2(image_buf_r)
         elif clear_none:
             self._set_cursor(0x00, 0x00)
@@ -406,17 +398,16 @@ class EPD_BW_154(EPD_Base):
 
     # waveform full refresh
     _lut_full = [
-        0x66,  # machine LUT
-        0x66, 0x44, 0x66, 0xAA, 0x11, 0x80, 0x08, 0x11, 0x18, 0x81,
-        0x18, 0x11, 0x88, 0x11, 0x88, 0x11, 0x88, 0x00, 0x00, 0xFF,
-        0xFF, 0xFF, 0xFF, 0x5F, 0xAF, 0xFF, 0xFF, 0x2F, 0x00
+        0x66, 0x66, 0x44, 0x66, 0xAA, 0x11, 0x80, 0x08, 0x11, 0x18, 0x81, 0x18,
+        0x11, 0x88, 0x11, 0x88, 0x11, 0x88, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF,
+        0x5F, 0xAF, 0xFF, 0xFF, 0x2F, 0x00
     ]  # fmt: skip
 
     # waveform partial refresh(fast)
     _lut_partial = [
-        0x10, 0x18, 0x18, 0x28, 0x18, 0x18, 0x18, 0x18, 0x08, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x13, 0x11, 0x22, 0x63, 0x11, 0x00, 0x00, 0x00, 0x00, 0x00
+        0x10, 0x18, 0x18, 0x28, 0x18, 0x18, 0x18, 0x18, 0x08, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x13, 0x11, 0x22, 0x63,
+        0x11, 0x00, 0x00, 0x00, 0x00, 0x00
     ]  # fmt: skip
 
     def _set_lut(self, lut: list):
@@ -490,7 +481,7 @@ class EPD_BW_154(EPD_Base):
         if self._mode != MODE.full:
             self._init(MODE.full)
         self._send_command(0x24)
-        image_buf = self._img_to_data_bw_fast(image)
+        image_buf = self._img_to_data_bw(image)
         self._send_data2(image_buf)
         self._trigger_display_full()
         if wait_idle:
@@ -504,7 +495,7 @@ class EPD_BW_154(EPD_Base):
         """
         if self._mode != MODE.full:
             self._init(MODE.full)
-        image_buf = self._img_to_data_bw_fast(image)
+        image_buf = self._img_to_data_bw(image)
         self._send_command(0x24)
         self._send_data2(image_buf)
         self._send_command(0x26)
@@ -521,7 +512,7 @@ class EPD_BW_154(EPD_Base):
         """
         if self._mode != MODE.partial:
             self._init(MODE.partial)
-        image_buf = self._img_to_data_bw_fast(image)
+        image_buf = self._img_to_data_bw(image)
         self._send_command(0x24)
         self._send_data2(image_buf)
         self._trigger_display_partial()
@@ -544,186 +535,210 @@ class EPD_BW_154(EPD_Base):
             self._wait_idle()
 
 
-class EPD_G4_29(EPD_Base):
+class EPD_G4_42(EPD_Base):
     """
-    Driver for WaveShare's 2.9 inch 4 Grayscale e-paper display
+    Driver for WaveShare's 4.2 inch 4 Grayscale e-paper display
     Support partial refresh
-    Screen Type: E029A01
+    Screen Type: E042A13
     """
 
-    WIDTH: int = 128
-    HEIGHT: int = 296
+    WIDTH: int = 400
+    HEIGHT: int = 300
     GRAY1 = 0xFF  # white
     GRAY2 = 0xC0  # light gray
     GRAY3 = 0x80  # dark gray
     GRAY4 = 0x00  # black
 
-    _lut_partial = [
-        0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x80, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x40, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x00, 0x00, 0x00, 0x22, 0x17, 0x41,
-        0xB0, 0x32, 0x36
+    _lut_all = [
+        0x01, 0x0A, 0x1B, 0x0F, 0x03, 0x01, 0x01, 0x05, 0x0A, 0x01, 0x0A, 0x01,
+        0x01, 0x01, 0x05, 0x08, 0x03, 0x02, 0x04, 0x01, 0x01, 0x01, 0x04, 0x04,
+        0x02, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x0A, 0x1B, 0x0F, 0x03, 0x01,
+        0x01, 0x05, 0x4A, 0x01, 0x8A, 0x01, 0x01, 0x01, 0x05, 0x48, 0x03, 0x82,
+        0x84, 0x01, 0x01, 0x01, 0x84, 0x84, 0x82, 0x00, 0x01, 0x01, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
+        0x01, 0x0A, 0x1B, 0x8F, 0x03, 0x01, 0x01, 0x05, 0x4A, 0x01, 0x8A, 0x01,
+        0x01, 0x01, 0x05, 0x48, 0x83, 0x82, 0x04, 0x01, 0x01, 0x01, 0x04, 0x04,
+        0x02, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x8A, 0x1B, 0x8F, 0x03, 0x01,
+        0x01, 0x05, 0x4A, 0x01, 0x8A, 0x01, 0x01, 0x01, 0x05, 0x48, 0x83, 0x02,
+        0x04, 0x01, 0x01, 0x01, 0x04, 0x04, 0x02, 0x00, 0x01, 0x01, 0x01, 0x00,
+        0x00, 0x00, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01,
+        0x01, 0x8A, 0x9B, 0x8F, 0x03, 0x01, 0x01, 0x05, 0x4A, 0x01, 0x8A, 0x01,
+        0x01, 0x01, 0x05, 0x48, 0x03, 0x42, 0x04, 0x01, 0x01, 0x01, 0x04, 0x04,
+        0x42, 0x00, 0x01, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x01,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x07,
+        0x17, 0x41, 0xA8, 0x32, 0x30
     ]  # fmt: skip
 
-    _lut_full = [
-        0x80, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
-        0x10, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,
-        0x80, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
-        0x10, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x14, 0x08, 0x00, 0x00, 0x00, 0x00, 0x02, 0x0A, 0x0A, 0x00, 0x0A, 0x0A,
-        0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x14, 0x08, 0x00, 0x01,
-        0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x44, 0x44, 0x44, 0x44, 0x44, 0x44, 0x00, 0x00, 0x00, 0x22, 0x17, 0x41,
-        0x00, 0x32, 0x36
-    ]  # fmt: skip
-
-    _lut_gray = [
-        0x00, 0x60, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x20, 0x60, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x28, 0x60, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x2A, 0x60, 0x15, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x02, 0x00, 0x05, 0x14, 0x00, 0x00, 0x1E, 0x1E, 0x00, 0x00, 0x00,
-        0x00, 0x01, 0x00, 0x02, 0x00, 0x05, 0x14, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x24, 0x22, 0x22, 0x22, 0x23, 0x32, 0x00, 0x00, 0x00, 0x22, 0x17, 0x41,
-        0xAE, 0x32, 0x28
-    ]  # fmt: skip
-
-    def _set_lut(self, lut):
+    def _set_lut(self):
         self._send_command(0x32)
-        for i in range(0, 153):
-            self._send_data(lut[i])
-        self._wait_idle()
+        for i in range(227):
+            self._send_data(self._lut_all[i])
         self._send_command(0x3F)
-        self._send_data(lut[153])
-        self._send_command(0x03)  # gate voltage
-        self._send_data(lut[154])
-        self._send_command(0x04)  # source voltage
-        self._send_data(lut[155])  # VSH
-        self._send_data(lut[156])  # VSH2
-        self._send_data(lut[157])  # VSL
-        self._send_command(0x2C)  # VCOM
-        self._send_data(lut[158])
-
-    def _set_window(self, x_start, y_start, x_end, y_end):
-        self._send_command(0x44)  # SET_RAM_X_ADDRESS_START_END_POSITION
-        self._send_data((x_start >> 3) & 0xFF)
-        self._send_data((x_end >> 3) & 0xFF)
-        self._send_command(0x45)  # SET_RAM_Y_ADDRESS_START_END_POSITION
-        self._send_data(y_start & 0xFF)
-        self._send_data((y_start >> 8) & 0xFF)
-        self._send_data(y_end & 0xFF)
-        self._send_data((y_end >> 8) & 0xFF)
-
-    def _set_cursor(self, x, y):
-        self._send_command(0x4E)  # SET_RAM_X_ADDRESS_COUNTER
-        self._send_data(x & 0xFF)
-        self._send_command(0x4F)  # SET_RAM_Y_ADDRESS_COUNTER
-        self._send_data(y & 0xFF)
-        self._send_data((y >> 8) & 0xFF)
+        self._send_data(self._lut_all[227])
+        self._send_command(0x03)
+        self._send_data(self._lut_all[228])
+        self._send_command(0x04)
+        self._send_data(self._lut_all[229])
+        self._send_data(self._lut_all[230])
+        self._send_data(self._lut_all[231])
+        self._send_command(0x2C)
+        self._send_data(self._lut_all[232])
 
     def _init_full_cmd(self):
         self._send_command(0x12)  # SWRESET
         self._wait_idle()
-        self._send_command(0x01)  # Driver output control
-        self._send_data(0x27)
-        self._send_data(0x01)
-        self._send_data(0x00)
-        self._send_command(0x11)  # data entry mode
-        self._send_data(0x03)
-        self._set_window(0, 0, self.WIDTH - 1, self.HEIGHT - 1)
-        self._send_command(0x21)  #  Display update control
-        self._send_data(0x00)
-        self._send_data(0x80)
-        self._set_cursor(0, 0)
-        self._wait_idle()
-        self._set_lut(self._lut_full)
-
-    def _init_partial_cmd(self):
-        self._set_lut(self._lut_partial)
-        self._send_command(0x37)
-        self._send_data(0x00)
-        self._send_data(0x00)
-        self._send_data(0x00)
-        self._send_data(0x00)
-        self._send_data(0x00)
+        self._send_command(0x21)  # Display update control
         self._send_data(0x40)
         self._send_data(0x00)
+        self._send_command(0x3C)  # BorderWavefrom
+        self._send_data(0x05)
+        self._send_command(0x11)  # data  entry  mode
+        self._send_data(0x03)  # X-mode
+        self._send_command(0x44)
         self._send_data(0x00)
+        self._send_data(0x31)
+        self._send_command(0x45)
+        self._send_data(0x00)
+        self._send_data(0x00)
+        self._send_data(0x2B)
+        self._send_data(0x01)
+        self._send_command(0x4E)
+        self._send_data(0x00)
+        self._send_command(0x4F)
+        self._send_data(0x00)
+        self._send_data(0x00)
+
+    def _init_partial_cmd(self):
+        self._send_command(0x3C)  # BorderWavefrom
+        self._send_data(0x80)
+        self._send_command(0x21)  # Display update control
         self._send_data(0x00)
         self._send_data(0x00)
         self._send_command(0x3C)  # BorderWavefrom
         self._send_data(0x80)
-        self._send_command(0x22)
-        self._send_data(0xC0)
-        self._send_command(0x20)
-        self._wait_idle()
-        self._set_window(0, 0, self.WIDTH - 1, self.HEIGHT - 1)
-        self._set_cursor(0, 0)
+        self._send_command(0x44)
+        self._send_data(0x00)
+        self._send_data(0x31)
+        self._send_command(0x45)
+        self._send_data(0x00)
+        self._send_data(0x00)
+        self._send_data(0x2B)
+        self._send_data(0x01)
+        self._send_command(0x4E)
+        self._send_data(0x00)
+        self._send_command(0x4F)
+        self._send_data(0x00)
+        self._send_data(0x00)
 
     def _init_grayscale_cmd(self):
         self._send_command(0x12)  # SWRESET
         self._wait_idle()
-        self._send_command(0x01)  # Driver output control
-        self._send_data(0x27)
-        self._send_data(0x01)
+        self._send_command(0x21)  # Display update control
         self._send_data(0x00)
-        self._send_command(0x11)  # data entry mode
+        self._send_data(0x00)
+        self._send_command(0x3C)  # BorderWavefrom
         self._send_data(0x03)
-        self._set_window(0, 0, self.WIDTH - 1, self.HEIGHT - 1)
-        self._send_command(0x3C)
-        self._send_data(0x04)
-        self._set_cursor(1, 0)
+        self._send_command(0x0C)  # BTST
+        self._send_data(0x8B)  # 8B
+        self._send_data(0x9C)  # 9C
+        self._send_data(0xA4)  # 96 A4
+        self._send_data(0x0F)  # 0F
+        self._set_lut()
+        self._send_command(0x11)  # data  entry  mode
+        self._send_data(0x03)  # X-mode
+        self._send_command(0x44)
+        self._send_data(0x00)
+        self._send_data(0x31)
+        self._send_command(0x45)
+        self._send_data(0x00)
+        self._send_data(0x00)
+        self._send_data(0x2B)
+        self._send_data(0x01)
+        self._send_command(0x4E)
+        self._send_data(0x00)
+        self._send_command(0x4F)
+        self._send_data(0x00)
+        self._send_data(0x00)
         self._wait_idle()
-        self._set_lut(self._lut_gray)
+
+    def _init_fast_cmd(self):
+        self._send_command(0x12)  # SWRESET
+        self._wait_idle()
+
+        self._send_command(0x21)  # Display update control
+        self._send_data(0x40)
+        self._send_data(0x00)
+
+        self._send_command(0x3C)  # BorderWavefrom
+        self._send_data(0x05)
+
+        self._send_command(0x1A)
+        # self._send_data(0x6E)  # 1.5s
+        self._send_data(0x5A)  # 1s
+
+        self._send_command(0x22)  # Load temperature value
+        self._send_data(0x91)
+        self._send_command(0x20)
+        self._wait_idle()
+
+        self._send_command(0x11)  # data  entry  mode
+        self._send_data(0x03)  # X-mode
+
+        self._send_command(0x44)
+        self._send_data(0x00)
+        self._send_data(0x31)
+
+        self._send_command(0x45)
+        self._send_data(0x00)
+        self._send_data(0x00)
+        self._send_data(0x2B)
+        self._send_data(0x01)
+
+        self._send_command(0x4E)
+        self._send_data(0x00)
+
+        self._send_command(0x4F)
+        self._send_data(0x00)
+        self._send_data(0x00)
+        self._wait_idle()
 
     def _trigger_display_full(self):
         self._send_command(0x22)  # DISPLAY_UPDATE_CONTROL_2
-        self._send_data(0xC7)
+        self._send_data(0xF7)
         self._send_command(0x20)  # MASTER_ACTIVATION
+
+    def _trigger_display_fast(self):
+        self._send_command(0x22)  # Display Update Control
+        self._send_data(0xC7)
+        self._send_command(0x20)  # Activate Display Update Sequence
 
     def _trigger_display_grayscale(self):
-        self._trigger_display_full()
+        self._send_command(0x22)  # Display Update Control
+        self._send_data(0xCF)
+        self._send_command(0x20)  # Activate Display Update Sequence
 
     def _trigger_display_partial(self):
-        self._send_command(0x22)  # DISPLAY_UPDATE_CONTROL_2
-        self._send_data(0x0F)
-        self._send_command(0x20)  # MASTER_ACTIVATION
+        self._send_command(0x22)  # Display Update Control
+        self._send_data(0xFF)
+        self._send_command(0x20)  # Activate Display Update Sequence
 
     def _process_4gray(self, image: list):
         data_a, data_b = [], []
-        map_a = {0xC0: 0x00, 0x00: 0x01, 0x80: 0x01}
-        map_b = {0xC0: 0x00, 0x00: 0x01, 0x80: 0x00}
+        map_a = {0xC0: 0x01, 0x00: 0x00, 0x80: 0x00}
+        map_b = {0xC0: 0x01, 0x00: 0x00, 0x80: 0x01}
         for i in range(0, 4736):
             bit = 0
             for j in range(0, 2):
                 temp = image[i * 2 + j]
                 for k in range(0, 2):
-                    bit |= map_a.get(temp & 0xC0, 0x00)
+                    bit |= map_a.get(temp & 0xC0, 0x01)
                     bit <<= 1
 
                     temp <<= 2
-                    bit |= map_a.get(temp & 0xC0, 0x00)
+                    bit |= map_a.get(temp & 0xC0, 0x01)
                     if j != 1 or k != 1:
                         bit <<= 1
                     temp <<= 2
@@ -733,11 +748,11 @@ class EPD_G4_29(EPD_Base):
             for j in range(0, 2):
                 temp = image[i * 2 + j]
                 for k in range(0, 2):
-                    bit |= map_b.get(temp & 0xC0, 0x01)
+                    bit |= map_b.get(temp & 0xC0, 0x00)
                     bit <<= 1
 
                     temp <<= 2
-                    bit |= map_b.get(temp & 0xC0, 0x01)
+                    bit |= map_b.get(temp & 0xC0, 0x00)
                     if j != 1 or k != 1:
                         bit <<= 1
                     temp <<= 2
@@ -755,11 +770,11 @@ class EPD_G4_29(EPD_Base):
         image_buf = self._img_to_data_bw(image)
         self._send_command(0x24)
         self._send_data2(image_buf)
+        self._send_command(0x26)
+        self._send_data2(image_buf)
         self._trigger_display_full()
-        logger.debug("Displaying image")
         if wait_idle:
             self._wait_idle()
-        logger.debug("Displaying image done")
 
     def display_base(self, image, wait_idle=True):
         """
@@ -767,16 +782,7 @@ class EPD_G4_29(EPD_Base):
         image: PIL图片/cv2 ndarray
         wait_idle: 是否阻塞等待屏幕空闲
         """
-        if self._mode != MODE.full:
-            self._init(MODE.full)
-        image_buf = self._img_to_data_bw(image)
-        self._send_command(0x24)
-        self._send_data2(image_buf)
-        self._send_command(0x26)
-        self._send_data2(image_buf)
-        self._trigger_display_full()
-        if wait_idle:
-            self._wait_idle()
+        self.display(image, wait_idle)
 
     def display_partial(self, image, wait_idle=True):
         """
@@ -785,7 +791,7 @@ class EPD_G4_29(EPD_Base):
         wait_idle: 是否阻塞等待屏幕空闲
         """
         if self._mode != MODE.partial:
-            self._init(MODE.partial)
+            self._init(MODE.partial, reset=False)
         image_buf = self._img_to_data_bw(image)
         self._send_command(0x24)
         self._send_data2(image_buf)
@@ -811,6 +817,23 @@ class EPD_G4_29(EPD_Base):
         if wait_idle:
             self._wait_idle()
 
+    def display_fast(self, image, wait_idle=True):
+        """
+        全刷显示图片 (快速模式)
+        image: PIL图片/cv2 ndarray
+        wait_idle: 是否阻塞等待屏幕空闲
+        """
+        if self._mode != MODE.fast:
+            self._init(MODE.fast)
+        image_buf = self._img_to_data_bw(image)
+        self._send_command(0x24)
+        self._send_data2(image_buf)
+        self._send_command(0x26)
+        self._send_data2(image_buf)
+        self._trigger_display_fast()
+        if wait_idle:
+            self._wait_idle()
+
     def clear(self, wait_idle=True):
         """
         清屏
@@ -819,6 +842,8 @@ class EPD_G4_29(EPD_Base):
         if self._mode != MODE.full:
             self._init(MODE.full)
         self._send_command(0x24)
+        self._send_data2(self._empty_buf)
+        self._send_command(0x26)
         self._send_data2(self._empty_buf)
         self._trigger_display_full()
         if wait_idle:

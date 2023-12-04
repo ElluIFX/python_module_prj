@@ -6,15 +6,16 @@ from .driver.cp2112 import CP2112, _reset_error_type
 from .errors import InterfacefIOError, InterfaceNotFoundError
 from .manager import BaseInterfaceBuilder
 from .templates import (
+    BaseInterfaceTemplate,
     GPIOInterfaceTemplate,
     GpioModes_T,
     I2CInterfaceTemplate,
     I2CMessageTemplate,
 )
-from .utils import FakeLock
 
 _dev: Optional[CP2112] = None  # hid device should be opened only once
-_lock = FakeLock()
+_lock = Lock()
+_shared_count = 0
 _reset_error_type(InterfacefIOError)
 
 
@@ -111,10 +112,12 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
         assert _dev is not None
         with _lock:
             for msg in msgs:
-                if msg._read:
+                if msg._read and msg._rd_len is not None:
                     msg._data = bytes(_dev.read_i2c(self._addr, msg._rd_len))
-                else:
+                elif not msg._read and msg._data is not None:
                     _dev.write_i2c(self._addr, msg._data)
+                else:
+                    raise ValueError(f"Invalid message: {msg}")
 
 
 class CP2112_I2CInterfaceBuilder(BaseInterfaceBuilder):
@@ -123,18 +126,21 @@ class CP2112_I2CInterfaceBuilder(BaseInterfaceBuilder):
         clock: int = 400000,
         retry: int = 3,
         txrx_leds: bool = True,
-        add_lock: bool = True,
     ) -> None:
-        global _dev
-        if _dev is None:
-            _dev = CP2112(clock=clock, retry=retry, txrx_leds=txrx_leds)
-            if add_lock:
-                global _lock
-                _lock = Lock()
+        global _dev, _shared_count
+        _dev = CP2112(clock=clock, retry=retry, txrx_leds=txrx_leds)
+        _shared_count += 1
         self.dev_type = "i2c"
 
     def build(self, address: int) -> CP2112_I2CInterface:
         return CP2112_I2CInterface(address)
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        global _dev, _shared_count
+        _shared_count -= 1
+        if _shared_count == 0 and _dev is not None:
+            _dev.close()
+            _dev = None
 
 
 def _SET_BIT(x, bit):
@@ -264,16 +270,20 @@ class CP2112_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         pinmap: Optional[Dict[str, CP2112AvailablePins]] = None,
-        add_lock: bool = True,
     ) -> None:
-        global _dev
+        global _dev, _shared_count
         if _dev is None:
             _dev = CP2112()
-            if add_lock:
-                global _lock
-                _lock = Lock()
-        self.dev_type = "gpio"
+        _shared_count += 1
         self._pinmap = pinmap
+        self.dev_type = "gpio"
 
     def build(self) -> CP2112_GPIOInterface:
         return CP2112_GPIOInterface(self._pinmap)
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        global _dev, _shared_count
+        _shared_count -= 1
+        if _shared_count == 0 and _dev is not None:
+            _dev.close()
+            _dev = None

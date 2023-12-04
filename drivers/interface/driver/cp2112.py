@@ -1,5 +1,8 @@
-"""Implementation of interface to the CP2112 USB-to-I2C device."""
-import hid  # Installed with "pip install hidapi"
+import struct
+import time
+from typing import List, Union
+
+import hid
 from loguru import logger
 
 
@@ -22,7 +25,7 @@ def _reset_error_type(new_type):
 
 # Status 1 when Status 0 is 0x03
 ErrorStatus = {
-    0x00: "NACK received (no device)",
+    0x00: "Timeout address NACKed (no device)",
     0x01: "Bus not free (SCL low)",
     0x02: "Arbitration lost",
     0x03: "Read incomplete",
@@ -37,68 +40,63 @@ PRODUCT_ID = 0xEA90
 class CP2112:
     """Class for interfacing with the CP2112 USB-to-I2C device through the HID USB driver."""
 
-    def __init__(self, clock=400000, serial_number=None, retry=3, txrx_leds=True):
+    def __init__(self, clock=400000, retry=3, txrx_leds=True, serial_number=None):
         """Constructor creates a new CP2112 object.
         Args:
             clock: I2C clock in Hz.
+            retry: Number of retry attempts.
+            txrx_leds: Enable Tx/Rx LEDs on GPIO0 and GPIO1.
             serial_number: Optional serial number as a text string.
-            retry: Number of retry attempts. 0 means infinite.
         Throws:
             OSError: When open fails.
         """
         self.handle = hid.device()
         self.handle.open(VENDOR_ID, PRODUCT_ID, serial_number)
-        # Set SMBus Configuration
-        self.handle.send_feature_report(
-            [
-                0x06,  # Set SMBus Configuration
-                (clock >> 24) & 0xFF,
-                (clock >> 16) & 0xFF,
-                (clock >> 8) & 0xFF,
-                clock & 0xFF,  # Clock in Hz
-                0x00,  # Device address (disabled)
-                0x00,  # Auto Send Read (disabled)
-                0x00,
-                0x0F,  # Write Timeout (No Timeout)
-                0x00,
-                0x0F,  # Read Timeout (No timeout)
-                0x01,  # SCL Low Timeout (disabled)
-                (retry >> 8) & 0xFF,
-                retry & 0xFF,
-            ]
-        )  # Retry Time (number of retry attempts)
+        self.set_smbus_config(clock, 0x00, False, 10, 10, True, retry)
         if txrx_leds:
             self.set_gpio_config(0x03, 0x03, 0x06, 0)
+        else:
+            self.set_gpio_config(0x00, 0x00, 0x00, 0)
         logger.info(
-            f"CP2112 initialized (Serial Number: {self.get_serial_number()}, Version: {self.get_version()})",
+            f"CP2112 initialized (Serial Number: {self.serial_number}, Version: {self.version})",
         )
 
-    def get_manufacturer(self):
+    def close(self):
+        """Close the device."""
+        self.handle.close()
+
+    @property
+    def manufacturer(self) -> str:
         """Retrieve manufacturer name."""
         return self.handle.get_manufacturer_string()
 
-    def get_product(self):
+    @property
+    def product(self) -> str:
         """Retrieve product name."""
         return self.handle.get_product_string()
 
-    def get_serial_number(self):
+    @property
+    def serial_number(self) -> str:
         """Retrieve serial number."""
         return self.handle.get_serial_number_string()
 
-    def get_version(self):
+    @property
+    def version(self) -> tuple[int, int]:
         """Retrieve version. Returns a tuple with Part Number and Device Version."""
         response = self.handle.get_feature_report(0x05, 3)
-        return (response[1], response[2])
+        return (int(response[1]), int(response[2]))
 
     def reset(self):
         """Reset the device and re.enumerate it on the USB bus."""
         self.handle.send_feature_report(0x01, [0x01])
 
-    def cancel(self):
+    def cancel_transfer(self):
         """Cancel an active transfer."""
         self.handle.write([0x17, 0x01])
 
-    def set_gpio_config(self, dir, push_pull, special, clock_divider):
+    def set_gpio_config(
+        self, dir: int, push_pull: int, special: int, clock_divider: int
+    ):
         """Configure all GPIO pins.
         Args:
             dir: Direction; Each bit indicates input (0) or output (1).
@@ -115,15 +113,15 @@ class CP2112:
             [0x02, dir, push_pull, special, clock_divider]
         )  # send twice to make sure it is set
 
-    def get_gpio_config(self):
+    def get_gpio_config(self) -> tuple[int, ...]:
         """Return the same GPIO configuration as set with set_gpio_config().
         Returns:
             A tuple (dir, push_pull, special, clock_divider).
         """
         response = self.handle.get_feature_report(0x02, 5)
-        return tuple(response[1:5])
+        return tuple(int(x) for x in response[1:5])
 
-    def set_gpio(self, value, mask):
+    def set_gpio(self, value: int, mask: int):
         """Set several GPIO output pins at once.
         Args:
             value: Each bit is a value written to the output pins.
@@ -173,7 +171,7 @@ class CP2112:
         """
         self.set_gpio(value << pin, 1 << pin)
 
-    def get_pin(self, pin):
+    def get_pin(self, pin) -> bool:
         """Read a GPIO pin. If it is an output pin, the output state is read.
         Args:
             pin: GPIO pin number.
@@ -182,8 +180,61 @@ class CP2112:
         """
         return True if self.get_gpio() & (1 << pin) else False
 
-    def _wait_transfer_finish(self):
-        """Wait for transfer to finish."""
+    def set_smbus_config(
+        self,
+        clock_speed: int,
+        device_address: int,
+        auto_send_read: bool,
+        write_timeout: int,
+        read_timeout: int,
+        scl_low_timeout: bool,
+        retry_time: int,
+    ):
+        """Set SMBus configuration.
+
+        Args:
+            clock_speed: SCL clock speed in Hz.
+            device_address: 7-bit I2C slave address, device will ACK this address but not support any R/W operation.
+            auto_send_read: Auto send read interrupt report after read transfer complete.
+            write_timeout: Timeout for write transfer in milliseconds, Max 1000.
+            read_timeout: Timeout for read transfer in milliseconds, Max 1000.
+            scl_low_timeout: SCL keep low 25ms will issue timeout error and reset SMBus.
+            retry_time: Retry attempts before auto cancel transfer, Max 1000.
+        """
+        data = [
+            0x06,  # Set SMBus Configuration
+            (clock_speed >> 24) & 0xFF,
+            (clock_speed >> 16) & 0xFF,
+            (clock_speed >> 8) & 0xFF,
+            clock_speed & 0xFF,  # Clock in Hz, MSB first
+            device_address << 1,  # Device address
+            0x01 if auto_send_read else 0x00,  # Auto Send Read
+            (write_timeout >> 8) & 0xFF,
+            write_timeout & 0xFF,  # Write Timeout in ms
+            (read_timeout >> 8) & 0xFF,
+            read_timeout & 0xFF,  # Read Timeout in ms
+            0x01 if scl_low_timeout else 0x00,  # SCL Low Timeout
+            (retry_time >> 8) & 0xFF,
+            retry_time & 0xFF,  # Retry Time
+        ]
+        self.handle.send_feature_report(data)
+
+    def get_smbus_config(self):
+        """Get SMBus configuration.
+
+        Returns:
+            A tuple (clock_speed, device_address, auto_send_read, write_timeout, read_timeout, scl_low_timeout, retry_time).
+        """
+        response = self.handle.get_feature_report(0x06, 14)
+        return struct.unpack(">IB?HH?H", bytes(response[1:14]))
+
+    def _wait_transfer_finish_response(self) -> int:
+        """Wait for transfer to finish.
+
+        Returns:
+            The number of bytes received.
+        """
+        t0 = time.perf_counter()
         try:
             while True:
                 self.handle.write([0x15, 0x01])
@@ -192,75 +243,98 @@ class CP2112:
                     if response[1] == 0x03:
                         raise I2CError(ErrorStatus[response[2]])
                     return (response[5] << 8) | response[6]
-        except Exception:
-            self.cancel()
-            raise
+                if time.perf_counter() - t0 > 1:
+                    raise I2CError("Wait transfer response timeout")
+        except Exception as e:
+            self.cancel_transfer()
+            raise e
 
-    def _wait_response(self, id, size):
-        """Wait for a specific response.
+    def _get_transfer_response(self, size: int) -> bytes:
+        """Get transfer response data.
+
         Args:
-            id: The ID to wait for.
             size: The number of bytes to read.
         """
+        t0 = time.perf_counter()
         while True:
             response = self.handle.read(size)
-            if response[0] == id:
-                return response
+            if response[0] == 0x13:
+                return bytes(response)
+            if time.perf_counter() - t0 > 1:
+                raise I2CError("Get transfer response timeout")
 
-    def write_i2c(self, address, tx_data):
+    def write_i2c(self, address: int, tx_data: Union[bytes, List[int]]):
         """Write to the I2C bus.
         Args:
             address: 7-bit I2C slave address.
-            tx_data: Data to write (must be convertible to `bytes`). At most 61 bytes can be written.
+            tx_data: Data to write (must be convertible to `bytes`). Maximum 61 bytes can be written.
         """
         # CP2112 cannot write more than 61 bytes
         if not 1 <= len(tx_data) <= 61:
             raise IndexError()
         data = bytes([0x14, address << 1, len(tx_data)]) + bytes(tx_data)
         self.handle.write(data)
-        self._wait_transfer_finish()
+        self._wait_transfer_finish_response()
 
-    def read_i2c(self, address, rx_size) -> bytes:
+    def read_i2c(
+        self,
+        address: int,
+        rx_size: int,
+        ignore_size_mismatch: bool = False,
+    ) -> bytes:
         """Read from the I2C bus.
         Args:
             address: 7-bit I2C slave address.
             rx_size: Number of bytes to read from the I2C bus. Maximum 512 bytes can be read.
+            ignore_size_mismatch: If True, the function will not throw an exception if the transfered data less than rx_size
         Returns:
-            list with data received.
+            bytes data received.
         """
         # CP2112 cannot read more than 512 bytes
         if not 1 <= rx_size <= 512:
             raise IndexError()
-        self.handle.write([0x10, address << 1, 0x00, rx_size])
-        count = self._wait_transfer_finish()
-        assert count == rx_size
+        self.handle.write([0x10, address << 1, (rx_size >> 8) & 0xFF, rx_size & 0xFF])
+        count = self._wait_transfer_finish_response()
+        if not ignore_size_mismatch and count != rx_size:
+            raise I2CError(f"Transfer size mismatch: {count} != {rx_size}")
         self.handle.write([0x12, rx_size])
-        response = self._wait_response(0x13, rx_size + 3)
-        assert response[2] == rx_size
-        return bytes(response[3 : rx_size + 3])
+        response = self._get_transfer_response(count + 3)
+        if ((response[1] << 8) | response[2]) != count:
+            raise I2CError(f"Response size mismatch: {response[2]} != {count}")
+        return bytes(response[3 : count + 3])
 
-    def write_read_i2c(self, address, tx_data, rx_size) -> bytes:
+    def write_read_i2c(
+        self,
+        address: int,
+        tx_data: Union[bytes, List[int]],
+        rx_size: int,
+        ignore_size_mismatch: bool = False,
+    ) -> bytes:
         """Combined write and read on the I2C bus.
         Args:
             address: 7-bit I2C slave address.
-            tx_data: Data to write (must be convertible to `bytes`). At most 61 bytes can be written.
+            tx_data: Data to write (must be convertible to `bytes`). Maximum 16 bytes can be written.
             rx_size: Number of bytes to read from the I2C bus. Maximum 512 bytes can be read.
+            ignore_size_mismatch: If True, the function will not throw an exception if the transfered data less than rx_size
         Returns:
-            list with data received.
+            bytes data received.
         """
-        # CP2112 cannot write more than 16 byte and not read more than 512 bytes
         if not 1 <= len(tx_data) <= 16 or not 1 <= rx_size <= 512:
-            raise IndexError()
+            raise ValueError(
+                "write_read_i2c() only supports 1-16 bytes write and 1-512 bytes read"
+            )
         self.handle.write(
             bytes([0x11, address << 1, rx_size >> 8, rx_size & 0xFF, len(tx_data)])
             + bytes(tx_data)
         )
-        count = self._wait_transfer_finish()
-        assert count == rx_size, f"count={count}, rx_size={rx_size}"
+        count = self._wait_transfer_finish_response()
+        if not ignore_size_mismatch and count != rx_size:
+            raise I2CError(f"Transfer size mismatch: {count} != {rx_size}")
         self.handle.write([0x12, rx_size])
-        response = self._wait_response(0x13, rx_size + 3)
-        assert response[2] == rx_size, f"response[2]={response[2]}, rx_size={rx_size}"
-        return bytes(response[3 : rx_size + 3])
+        response = self._get_transfer_response(count + 3)
+        if ((response[1] << 8) | response[2]) != count:
+            raise I2CError(f"Response size mismatch: {response[2]} != {count}")
+        return bytes(response[3 : count + 3])
 
     def check_i2c_device(self, address) -> bool:
         """Check if a device is connected to the I2C bus.

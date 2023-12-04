@@ -73,7 +73,9 @@ class BaseInterfaceBuilder:
 
         specific_module: offer name if this interface is specific to a module
         """
-        assert self.dev_type is not None, "Invalid interface builder"
+        assert (
+            self.dev_type is not None
+        ), "Invalid interface builder (dev_type not specified)"
         if specific_module is None:
             InterfaceManager.register_global_interface(self.dev_type, self)
         else:

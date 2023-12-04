@@ -15,6 +15,7 @@ from .errors import (
 )
 from .manager import BaseInterfaceBuilder
 from .templates import (
+    BaseInterfaceTemplate,
     GPIOInterfaceTemplate,
     GpioModes_T,
     I2CInterfaceTemplate,
@@ -22,23 +23,21 @@ from .templates import (
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
-from .utils import FakeLock
 
 _dev: Optional[CH347] = None  # device should be opened only once
-_lock = FakeLock()
+_lock = Lock()
+_shared_count = 0
 
 
-def _init_dev(add_lock: bool = True):
-    global _dev
+def _init_dev():
+    global _dev, _shared_count
+    _shared_count += 1
     if _dev is None:
         _dev = CH347()
-        if add_lock:
-            global _lock
-            _lock = Lock()
         if not _dev.open_device():
             raise InterfaceInitError("CH347 open failed")
-        # if not _dev.set_timeout(100, 100):
-        #     raise InterfaceInitError("CH347 set timeout failed")
+        if not _dev.set_timeout(100, 100):
+            raise InterfaceInitError("CH347 set timeout failed")
         info = _dev.get_device_info()
         if info is None:
             raise InterfaceInitError("CH347 get info failed")
@@ -48,10 +47,12 @@ def _init_dev(add_lock: bool = True):
 
 
 def _close_dev():
-    global _dev
-    if _dev is not None:
+    global _dev, _shared_count
+    _shared_count -= 1
+    if _dev is not None and _shared_count <= 0:
         _dev.close_device()
         _dev = None
+        _shared_count = 0
 
 
 atexit.register(_close_dev)
@@ -173,9 +174,8 @@ class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
-        add_lock: bool = True,
     ) -> None:
-        _init_dev(add_lock)
+        _init_dev()
         assert _dev is not None
         clock_dict: Dict[int, Literal[0, 1, 2, 3, 4, 5, 6]] = {
             20000: 0,
@@ -191,6 +191,9 @@ class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
 
     def build(self, address: int) -> CH347_I2CInterface:
         return CH347_I2CInterface(address)
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        _close_dev()
 
 
 class CH347_UARTInterface(UARTInterfaceTemplate):
@@ -334,8 +337,8 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
 
 
 class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
-    def __init__(self, uart_index: int = 0, add_lock: bool = True) -> None:
-        _init_dev(add_lock)
+    def __init__(self, uart_index: int = 0) -> None:
+        _init_dev()
         assert _dev is not None
         # check if uart_index is valid
         if _dev.open_uart(uart_index) is None:
@@ -347,6 +350,9 @@ class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
 
     def build(self, baudrate: int) -> CH347_UARTInterface:
         return CH347_UARTInterface(self._idx, baudrate)
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        _close_dev()
 
 
 class CH347_SPIInterface(SPIInterfaceTemplate):
@@ -515,9 +521,8 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
         cs: Literal[0, 1] = 0,
         cs_high: bool = False,
         auto_reset: bool = False,
-        add_lock: bool = True,
     ) -> None:
-        _init_dev(add_lock)
+        _init_dev()
         assert _dev is not None
         self._cs: Literal[0, 1] = cs
         self._enable_cs = enable_cs
@@ -534,6 +539,9 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
             mode,
             speed_hz,
         )
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        _close_dev()
 
 
 CH347AvailablePins = Literal[
@@ -635,11 +643,13 @@ class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(
         self,
         pinmap: Optional[Dict[str, CH347AvailablePins]] = None,
-        add_lock: bool = True,
     ) -> None:
-        _init_dev(add_lock)
+        _init_dev()
         self._pinmap = pinmap
         self.dev_type = "gpio"
 
     def build(self) -> CH347_GPIOInterface:
         return CH347_GPIOInterface(self._pinmap)
+
+    def destroy(self, instance: BaseInterfaceTemplate):
+        _close_dev()

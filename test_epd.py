@@ -5,7 +5,7 @@ from math import floor
 import cv2
 
 from drivers import register_interface
-from drivers.epd import EPD_BW_154
+from drivers.epd import EPD_BW_154, EPD_G4_42
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 register_interface("ch347", "spi")
@@ -14,9 +14,9 @@ register_interface(
     "ch347",
     "gpio",
     pinmap={
-        "DC": "GPIO6",
+        "DC": "GPIO7",
         "RST": "GPIO4",
-        "BUSY": "GPIO7",
+        "BUSY": "GPIO6",
     },
 )
 
@@ -40,19 +40,12 @@ def vertical_text(
 
 
 def test_image():
-    with EPD_BW_154() as epd:
-        cvimg = cv2.imread("./res/girl.jpg")
-        cvimg = cv2.threshold(cvimg, 185, 255, cv2.THRESH_BINARY)[1]
+    with EPD_G4_42() as epd:
+        cvimg = cv2.imread("./res/amiya.jpg")
+        # cvimg = cv2.threshold(cvimg, 185, 255, cv2.THRESH_BINARY)[1]
         cvimg = epd.fit_cv2(cvimg)
-        t0 = time.perf_counter()
-        # epd.display(cvimg)
         epd.clear()
-        t1 = time.perf_counter()
-        print(f"Display time: {t1 - t0:.3f}s")
-        t0 = time.perf_counter()
-        epd.display_partial(cvimg)
-        t1 = time.perf_counter()
-        print(f"Display partial time: {t1 - t0:.3f}s")
+        epd.display_grayscale(cvimg)
 
 
 test_image()
