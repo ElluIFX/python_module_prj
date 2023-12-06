@@ -29,7 +29,7 @@ _lock = Lock()
 _shared_count = 0
 
 
-def _init_dev():
+def _open_dev():
     global _dev, _shared_count
     _shared_count += 1
     if _dev is None:
@@ -171,11 +171,16 @@ class CH347_I2CInterface(I2CInterfaceTemplate):
 
 
 class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "i2c"
+
     def __init__(
         self,
         clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
     ) -> None:
-        _init_dev()
+        self._clock = clock
+
+    def build(self, address: int) -> CH347_I2CInterface:
+        _open_dev()
         assert _dev is not None
         clock_dict: Dict[int, Literal[0, 1, 2, 3, 4, 5, 6]] = {
             20000: 0,
@@ -186,10 +191,7 @@ class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
             750000: 3,
             1000000: 6,
         }
-        _dev.i2c_set(clock_dict[clock])
-        self.dev_type = "i2c"
-
-    def build(self, address: int) -> CH347_I2CInterface:
+        _dev.i2c_set(clock_dict[self._clock])
         return CH347_I2CInterface(address)
 
     def destroy(self, instance: BaseInterfaceTemplate):
@@ -206,8 +208,8 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
         self._timeout = None
         self._rbuf = bytearray()
         assert _dev is not None
-        if not _dev.open_uart(self._idx):
-            raise InterfaceInitError("CH347 open failed")
+        if not _dev.open_uart(uart_index):
+            raise InterfaceInitError(f"CH347 open uart-{uart_index} failed")
         self._reset()
         return super().__init__()
 
@@ -337,22 +339,16 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
 
 
 class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "uart"
+
     def __init__(self, uart_index: int = 0) -> None:
-        _init_dev()
-        assert _dev is not None
-        # check if uart_index is valid
-        if _dev.open_uart(uart_index) is None:
-            raise InterfaceInitError(f"CH347 open uart-{uart_index} failed")
-        _dev.close_uart(uart_index)
-        self._opened = True
         self._idx = uart_index
-        self.dev_type = "uart"
 
     def build(self, baudrate: int) -> CH347_UARTInterface:
         return CH347_UARTInterface(self._idx, baudrate)
 
     def destroy(self, instance: BaseInterfaceTemplate):
-        _close_dev()
+        pass
 
 
 class CH347_SPIInterface(SPIInterfaceTemplate):
@@ -515,6 +511,8 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
 
 
 class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "spi"
+
     def __init__(
         self,
         enable_cs: bool = True,
@@ -522,15 +520,13 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
         cs_high: bool = False,
         auto_reset: bool = False,
     ) -> None:
-        _init_dev()
-        assert _dev is not None
         self._cs: Literal[0, 1] = cs
         self._enable_cs = enable_cs
         self._cs_high = cs_high
         self._auto_reset = auto_reset
-        self.dev_type = "spi"
 
     def build(self, mode: int, speed_hz: int) -> CH347_SPIInterface:
+        _open_dev()
         return CH347_SPIInterface(
             self._enable_cs,
             self._cs,
@@ -640,15 +636,16 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
 
 
 class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "gpio"
+
     def __init__(
         self,
         pinmap: Optional[Dict[str, CH347AvailablePins]] = None,
     ) -> None:
-        _init_dev()
         self._pinmap = pinmap
-        self.dev_type = "gpio"
 
     def build(self) -> CH347_GPIOInterface:
+        _open_dev()
         return CH347_GPIOInterface(self._pinmap)
 
     def destroy(self, instance: BaseInterfaceTemplate):

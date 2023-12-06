@@ -44,8 +44,21 @@ def test_image():
         cvimg = cv2.imread("./res/amiya.jpg")
         # cvimg = cv2.threshold(cvimg, 185, 255, cv2.THRESH_BINARY)[1]
         cvimg = epd.fit_cv2(cvimg)
+        # epd.clear()
+        t0 = time.time()
         epd.clear()
-        epd.display_grayscale(cvimg)
+        epd.display_base(cvimg)
+        t1 = time.time()
+        print("display_base: ", t1 - t0)
+        # t0 = time.time()
+        # epd.display_partial(cvimg)
+        # t1 = time.time()
+        # print("display_partial: ", t1 - t0)
+        # t0 = time.time()
+        # epd.display_partial(cvimg)
+        # t1 = time.time()
+        # print("display_partial: ", t1 - t0)
+        # epd.display_grayscale(cvimg)
 
 
 test_image()

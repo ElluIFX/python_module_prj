@@ -140,10 +140,11 @@ class Periphery_I2CInterface(I2CInterfaceTemplate):
 
 
 class Periphery_I2CInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "i2c"
+
     def __init__(self, devpath: str, keep_alive: bool = False) -> None:
         self._devpath = devpath
         self._keep_alive = keep_alive
-        self.dev_type = "i2c"
 
     def build(self, address: int) -> Periphery_I2CInterface:
         return Periphery_I2CInterface(self._devpath, address, self._keep_alive)
@@ -237,9 +238,10 @@ class Periphery_UARTInterface(UARTInterfaceTemplate):
 
 
 class Periphery_UARTInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "uart"
+
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
-        self.dev_type = "uart"
 
     def build(self, baudrate: int) -> Periphery_UARTInterface:
         return Periphery_UARTInterface(self._devpath, baudrate)
@@ -322,9 +324,10 @@ class Periphery_SPIInterface(SPIInterfaceTemplate):
 
 
 class Periphery_SPIInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "spi"
+
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
-        self.dev_type = "spi"
 
     def build(self, mode: int, speed_hz: int) -> Periphery_SPIInterface:
         return Periphery_SPIInterface(self._devpath, mode, speed_hz)
@@ -425,6 +428,8 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
 
 
 class Periphery_GPIOInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "gpio"
+
     def __init__(
         self,
         pinmap: Optional[Dict[str, str]] = None,
@@ -432,7 +437,6 @@ class Periphery_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     ) -> None:
         self._pinmap = pinmap
         self._modemap = modemap
-        self.dev_type = "gpio"
 
     def build(self) -> Periphery_GPIOInterface:
         return Periphery_GPIOInterface(self._pinmap, self._modemap)

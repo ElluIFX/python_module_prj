@@ -121,18 +121,22 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
 
 
 class CP2112_I2CInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "i2c"
+
     def __init__(
         self,
         clock: int = 400000,
         retry: int = 3,
         txrx_leds: bool = True,
     ) -> None:
-        global _dev, _shared_count
-        _dev = CP2112(clock=clock, retry=retry, txrx_leds=txrx_leds)
-        _shared_count += 1
-        self.dev_type = "i2c"
+        self._clock = clock
+        self._retry = retry
+        self._txrx_leds = txrx_leds
 
     def build(self, address: int) -> CP2112_I2CInterface:
+        global _dev, _shared_count
+        _dev = CP2112(clock=self._clock, retry=self._retry, txrx_leds=self._txrx_leds)
+        _shared_count += 1
         return CP2112_I2CInterface(address)
 
     def destroy(self, instance: BaseInterfaceTemplate):
@@ -267,18 +271,19 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
 
 
 class CP2112_GPIOInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "gpio"
+
     def __init__(
         self,
         pinmap: Optional[Dict[str, CP2112AvailablePins]] = None,
     ) -> None:
+        self._pinmap = pinmap
+
+    def build(self) -> CP2112_GPIOInterface:
         global _dev, _shared_count
         if _dev is None:
             _dev = CP2112()
         _shared_count += 1
-        self._pinmap = pinmap
-        self.dev_type = "gpio"
-
-    def build(self) -> CP2112_GPIOInterface:
         return CP2112_GPIOInterface(self._pinmap)
 
     def destroy(self, instance: BaseInterfaceTemplate):

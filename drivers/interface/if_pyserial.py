@@ -91,9 +91,10 @@ class PySerial_UARTInterface(UARTInterfaceTemplate):
 
 
 class PySerial_UARTInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "uart"
+
     def __init__(self, port: str) -> None:
         self._port = port
-        self.dev_type = "uart"
 
     def build(self, baudrate: int) -> PySerial_UARTInterface:
         return PySerial_UARTInterface(self._port, baudrate)

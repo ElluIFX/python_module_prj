@@ -1,12 +1,13 @@
 import math
+import time
 
-from drivers.imu import IMU
+from drivers.bmi160 import BMI160
 from drivers.interface import register_interface
 from drivers.interface.utils import i2c_bus_scanner
 
 register_interface("ch347", "i2c", clock=400000)
 i2c_bus_scanner()
-imu = IMU()
+imu = BMI160()
 imu.kalman_init()
 imu.kalman_calibrate()
 while True:

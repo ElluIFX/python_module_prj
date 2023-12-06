@@ -62,10 +62,11 @@ class Spidev_SPIInterface(SPIInterfaceTemplate):
 
 
 class Spidev_SPIInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "spi"
+
     def __init__(self, channel: int, port: int) -> None:
         self._channel = channel
         self._port = port
-        self.dev_type = "spi"
 
     def build(self, mode: int, speed_hz: int) -> Spidev_SPIInterface:
         return Spidev_SPIInterface(self._channel, self._port, mode, speed_hz)

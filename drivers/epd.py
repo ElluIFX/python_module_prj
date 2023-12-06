@@ -597,6 +597,7 @@ class EPD_G4_42(EPD_Base):
         self._send_data(0x05)
         self._send_command(0x11)  # data  entry  mode
         self._send_data(0x03)  # X-mode
+
         self._send_command(0x44)
         self._send_data(0x00)
         self._send_data(0x31)
@@ -619,6 +620,7 @@ class EPD_G4_42(EPD_Base):
         self._send_data(0x00)
         self._send_command(0x3C)  # BorderWavefrom
         self._send_data(0x80)
+
         self._send_command(0x44)
         self._send_data(0x00)
         self._send_data(0x31)
@@ -726,37 +728,30 @@ class EPD_G4_42(EPD_Base):
         self._send_command(0x20)  # Activate Display Update Sequence
 
     def _process_4gray(self, image: list):
-        data_a, data_b = [], []
-        map_a = {0xC0: 0x01, 0x00: 0x00, 0x80: 0x00}
-        map_b = {0xC0: 0x01, 0x00: 0x00, 0x80: 0x01}
-        for i in range(0, 4736):
-            bit = 0
+        data_a = [0x00] * self.HEIGHT * self._LWIDTH
+        data_b = [0x00] * self.HEIGHT * self._LWIDTH
+        map_a = {0xC0: 0x01, 0x00: 0x00, 0x80: 0x00, 0xFF: 0x01}
+        map_b = {0xC0: 0x01, 0x00: 0x00, 0x80: 0x01, 0xFF: 0x00}
+        for i in range(0, int(self.WIDTH * self.HEIGHT / 8)):
+            bit1 = 0
+            bit2 = 0
             for j in range(0, 2):
                 temp = image[i * 2 + j]
                 for k in range(0, 2):
-                    bit |= map_a.get(temp & 0xC0, 0x01)
-                    bit <<= 1
+                    bit1 |= map_a.get(temp & 0xC0, map_a[0xFF])
+                    bit2 |= map_b.get(temp & 0xC0, map_b[0xFF])
+                    bit1 <<= 1
+                    bit2 <<= 1
 
                     temp <<= 2
-                    bit |= map_a.get(temp & 0xC0, 0x01)
+                    bit1 |= map_a.get(temp & 0xC0, map_a[0xFF])
+                    bit2 |= map_b.get(temp & 0xC0, map_b[0xFF])
                     if j != 1 or k != 1:
-                        bit <<= 1
+                        bit1 <<= 1
+                        bit2 <<= 1
                     temp <<= 2
-            data_a.append(bit & 0xFF)
-        for i in range(0, 4736):
-            bit = 0
-            for j in range(0, 2):
-                temp = image[i * 2 + j]
-                for k in range(0, 2):
-                    bit |= map_b.get(temp & 0xC0, 0x00)
-                    bit <<= 1
-
-                    temp <<= 2
-                    bit |= map_b.get(temp & 0xC0, 0x00)
-                    if j != 1 or k != 1:
-                        bit <<= 1
-                    temp <<= 2
-            data_b.append(bit & 0xFF)
+            data_a[i] = bit1 & 0xFF
+            data_b[i] = bit2 & 0xFF
         return data_a, data_b
 
     def display(self, image, wait_idle=True):

@@ -147,10 +147,11 @@ class SMBus2_I2CInterface(I2CInterfaceTemplate):
 
 
 class SMBus2_I2CInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "i2c"
+
     def __init__(self, bus: Union[int, str], keep_alive: bool = False):
         self._bus = bus
         self._keep_alive = keep_alive
-        self.dev_type = "i2c"
 
     def build(self, address: int) -> SMBus2_I2CInterface:
         return SMBus2_I2CInterface(self._bus, address)

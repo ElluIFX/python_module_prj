@@ -93,6 +93,8 @@ class PCAL6416A_GPIOInterface(GPIOInterfaceTemplate):
 
 
 class PCAL6416A_GPIOInterfaceBuilder(BaseInterfaceBuilder):
+    dev_type = "gpio"
+
     def __init__(
         self,
         pinmap: Optional[Dict[str, PCAL6416AAvailablePins]] = None,
@@ -102,7 +104,6 @@ class PCAL6416A_GPIOInterfaceBuilder(BaseInterfaceBuilder):
         self._pinmap = pinmap
         self._address = address
         self._cache_reg = cache_reg
-        self.dev_type = "gpio"
 
     def build(self) -> PCAL6416A_GPIOInterface:
         return PCAL6416A_GPIOInterface(self._pinmap, self._address, self._cache_reg)
