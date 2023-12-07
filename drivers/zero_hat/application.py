@@ -2,6 +2,7 @@ import time
 from typing import List
 
 from loguru import logger
+
 from .protocal import ZHProtocolLayer
 from .utils import hsv_to_rgb
 
@@ -76,7 +77,7 @@ class ZHAppLayer(ZHProtocolLayer):
         super().__init__(*args, **kwargs)
 
     def _write_ws2812(self, data: bytes) -> None:
-        self.send_raw_data(data, 0x0F)
+        self.send_raw_data(0x0F, data)
 
     def wait_for_connection(self, timeout_s=-1) -> bool:
         """

@@ -20,23 +20,27 @@ class ByteVar:
 
     def __init__(
         self,
-        ctype: Literal["u8", "u16", "u32", "s8", "s16", "s32", "float"] = "u8",
+        ctype: Literal[
+            "u8", "u16", "u32", "s8", "s16", "s32", "float", "double"
+        ] = "u8",
         var_type: type = int,
         value_multiplier: float = 1.0,
+        little_endian: bool = True,
     ):
         """Args:
         ctype (str): C-like类型
         py_var_type (_type_): python类型
         value_multiplier (float, optional): 值在从byte向python转换时的乘数.
         """
-        self.reset(0, ctype, var_type, value_multiplier)
+        self.reset(0, ctype, var_type, value_multiplier, little_endian)
 
     def reset(
         self,
         init_value,
-        ctype: Literal["u8", "u16", "u32", "s8", "s16", "s32", "float"],
+        ctype: Literal["u8", "u16", "u32", "s8", "s16", "s32", "float", "double"],
         py_var_type: type,
         value_multiplier: float = 1.0,
+        little_endian: bool = True,
     ):
         """重置变量
 
@@ -46,29 +50,26 @@ class ByteVar:
             py_var_type (_type_): python类型
             value_multiplier (float, optional): 值在从byte向python转换时的乘数.
         """
-        ctype_word_part = ctype[0]
-        ctype_number_part = ctype[1:]
-        if ctype_word_part.lower() == "u":
-            self._byte_length = int(int(ctype_number_part) // 8)
-            self._signed = False
-            self._float = False
-        elif ctype_word_part.lower() == "s":
-            self._byte_length = int(int(ctype_number_part) // 8)
-            self._signed = True
-            self._float = False
-        elif ctype == "float":
-            self._byte_length = 4
-            self._signed = True
-            self._float = True
-        else:
+        fmt_dict = {
+            "u8": (1, "B", False),
+            "u16": (2, "H", False),
+            "u32": (4, "I", False),
+            "s8": (1, "b", False),
+            "s16": (2, "h", False),
+            "s32": (4, "i", False),
+            "float": (4, "f", True),
+            "double": (8, "d", True),
+        }
+        if ctype not in fmt_dict:
             raise ValueError(f"Invalid ctype: {ctype}")
-        if not self._float and int(ctype_number_part) % 8 != 0:
-            raise ValueError(f"Invalid ctype: {ctype}")
+        self._byte_length, self._struct_fmt, self._float = fmt_dict[ctype]
         if py_var_type not in [int, float, bool]:
             raise ValueError(f"Invalid var_type: {py_var_type}")
         self._var_type = py_var_type
         self._multiplier = value_multiplier
         self._value = self._var_type(init_value)
+        self._le = little_endian
+        self._fmt = ("<" if self._le else ">") + self._struct_fmt
         return self
 
     @property
@@ -79,55 +80,76 @@ class ByteVar:
     def value(self, value):
         self._value = self._var_type(value)
 
-    def update_value_with_mul(self, value):
+    @property
+    def multiplier(self) -> float:
+        return self._multiplier
+
+    @multiplier.setter
+    def multiplier(self, value):
+        self._multiplier = value
+
+    @property
+    def raw_value(self):
+        return self._value / self._multiplier
+
+    @raw_value.setter
+    def raw_value(self, value):
         self._value = self._var_type(value * self._multiplier)
 
     @property
     def bytes(self):
-        if self._float:
-            return struct.pack("<f", self._value / self._multiplier)
         if self._multiplier != 1:
-            return int(round(self._value / self._multiplier)).to_bytes(
-                self._byte_length, "little", signed=self._signed
-            )
+            val = self._value / self._multiplier
         else:
-            return int(self._value).to_bytes(
-                self._byte_length, "little", signed=self._signed
-            )
+            val = self._value
+        if not self._float:
+            val = round(val)
+        return struct.pack(self._fmt, val)
 
     @bytes.setter
     def bytes(self, value):
-        if self._float:
-            self._value = self._var_type(
-                struct.unpack("<f", value)[0] * self._multiplier
-            )
-        else:
-            self._value = self._var_type(
-                int.from_bytes(value, "little", signed=self._signed) * self._multiplier
-            )
+        self._value = self._var_type(struct.unpack(self._fmt, value)[0])
 
     @property
     def byte_length(self):
         return self._byte_length
 
     @property
-    def struct_fmt_type(self):
-        if self._float:
-            return "f"
-        base_dict = {1: "b", 2: "h", 4: "i", 8: "q"}
-        if self._signed:
-            return base_dict[self._byte_length]
-        else:
-            return base_dict[self._byte_length].upper()
+    def struct_fmt(self):
+        return self._struct_fmt
+
+    def __str__(self) -> str:
+        return str(self._value)
+
+    def __int__(self) -> int:
+        return int(self._value)
+
+    def __float__(self) -> float:
+        return float(self._value)
+
+    def __bool__(self) -> bool:
+        return bool(self._value)
+
+    def __bytes__(self) -> "bytes":
+        return self.bytes
 
 
 class BaseStruct:
     PACK: List[ByteVar] = []  # 存放结构体对象的列表
 
-    def __init__(self):
-        self._fmt_string = "<" + "".join([i.struct_fmt_type for i in self.PACK])
+    def __init__(self, little_endian=True):
+        if little_endian:
+            self._fmt_string = "<" + "".join([i.struct_fmt for i in self.PACK])
+        else:
+            self._fmt_string = "<" + "".join([i.struct_fmt for i in self.PACK])
+        for i in self.PACK:
+            i._le = little_endian
         self._fmt_length = struct.calcsize(self._fmt_string)
         self.update_event = Event()
+
+    def __getitem__(self, key):
+        assert isinstance(key, str)
+        return getattr(self, key).value
 
     def update_from_bytes(self, bytes, print_update=False):
         if len(bytes) != self._fmt_length:
@@ -136,15 +158,25 @@ class BaseStruct:
             )
         vals = struct.unpack(self._fmt_string, bytes)
         for i, val in enumerate(vals):
-            self.PACK[i].update_value_with_mul(val)
+            self.PACK[i].raw_value = val
         self.update_event.set()
         if print_update:
             self.print()
+
+    @property
+    def struct_fmt(self):
+        return self._fmt_string
+
+    @property
+    def struct_length(self):
+        return self._fmt_length
 
     def print(
         self,
         extra_info: List[str] = [],
         extra_data: List[ByteVar] = [],
+        line_width: int = 90,  # 每行最多显示的字符数
+        upper_margin: int = 1,  # 为日志留出的空间
     ):
         RED = "\033[1;31m"
         GREEN = "\033[1;32m"
@@ -154,18 +186,15 @@ class BaseStruct:
         PURPLE = "\033[1;35m"
         RESET = "\033[0m"
         BACK = "\033[F"
-        LINELIMIT = 90  # 每行最多显示的字符数
-        LOG_SPACE = 1  # 为日志留出的空间
-        BOXCOLOR = BLUE
-        HEAD = f"{BOXCOLOR}| {RESET}"
-        TAIL = f"{BOXCOLOR} |{RESET}"
+        HEAD = f"{BLUE}| {RESET}"
+        TAIL = f"{BLUE} |{RESET}"
         lines = [
-            BOXCOLOR
-            + "-" * ((LINELIMIT - 32) // 2)
+            BLUE
+            + "-" * ((line_width - 32) // 2)
             + PURPLE
             + " ▲ System log / ▼ System status "
-            + BOXCOLOR
-            + "-" * ((LINELIMIT - 32) // 2)
+            + BLUE
+            + "-" * ((line_width - 32) // 2)
             + RESET,
             HEAD,
         ]
@@ -189,14 +218,14 @@ class BaseStruct:
         for vartext in varlist:
             if vartext[-1] != " ":
                 vartext += " "
-            if len_s(lines[-1]) + len_s(vartext) > LINELIMIT - 2:
-                lines[-1] += " " * (LINELIMIT - len_s(lines[-1]) - 2) + TAIL
+            if len_s(lines[-1]) + len_s(vartext) > line_width - 2:
+                lines[-1] += " " * (line_width - len_s(lines[-1]) - 2) + TAIL
                 lines.append(HEAD)
             lines[-1] += vartext
-        lines[-1] += " " * (LINELIMIT - len_s(lines[-1]) - 2) + TAIL
-        lines.append(f"{BOXCOLOR}{'-' * LINELIMIT}{RESET}")
-        for _ in range(LOG_SPACE):
-            lines.insert(0, " " * LINELIMIT)
+        lines[-1] += " " * (line_width - len_s(lines[-1]) - 2) + TAIL
+        lines.append(f"{BLUE}{'-' * line_width}{RESET}")
+        for _ in range(upper_margin):
+            lines.insert(0, " " * line_width)
         text = "\n".join(lines) + BACK * (len(lines) - 1)
         print(text, end="")
 
@@ -259,7 +288,7 @@ class BaseEvent:
 
         Args:
             callback (function): 目标函数
-            trigger (bool, optional): 回调触发方式 (True为事件置位时触发)
+            trigger (bool, optional): 回调触发极性 (True为事件置位时触发)
         """
         self._callback = callback
         self._callback_trigger = trigger

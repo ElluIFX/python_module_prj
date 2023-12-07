@@ -81,7 +81,7 @@ class ZHProtocolLayer(ZHBaseLayer):
         self._temp2.reset(g, "u8", int)
         self._temp3.reset(b, "u8", int)
         self.send_raw_data(
-            self._temp1.bytes + self._temp2.bytes + self._temp3.bytes, 0x01
+            0x01, self._temp1.bytes + self._temp2.bytes + self._temp3.bytes
         )
 
     def _update_imu_data(self, data: bytes):
@@ -96,7 +96,7 @@ class ZHProtocolLayer(ZHBaseLayer):
         """
         assert 0 < report_ms, "report_ms must be greater than 0"
         self._temp1.reset(report_ms if enable else 0, "u16", int)
-        self.send_raw_data(self._temp1.bytes, 0x02 if enable else 0x03, ack=True)
+        self.send_raw_data(0x02 if enable else 0x03, self._temp1.bytes, ack=True)
         if enable:
             for data in self.imu._get_readble_vars():
                 if data not in self._extra_data:
@@ -117,13 +117,13 @@ class ZHProtocolLayer(ZHBaseLayer):
         persist: 将校准数据写入配置文件
         """
         self._temp1.reset(int(persist), "u8", int)
-        self.send_raw_data(self._temp1.bytes, 0x04, ack=True)
+        self.send_raw_data(0x04, self._temp1.bytes, ack=True)
 
     def calibrate_imu(self) -> None:
         """
         IMU传感器校准
         """
-        self.send_raw_data(NODATA, 0x05, ack=True)
+        self.send_raw_data(0x05, NODATA, ack=True)
 
     def _update_key_event(self, data: bytes):
         key_name = key_name_dict.get(data[1])
@@ -178,7 +178,7 @@ class ZHProtocolLayer(ZHBaseLayer):
             continue_send_speedup,
             continue_send_min_ms,
         )
-        self.send_raw_data(data, 0x09, ack=True)
+        self.send_raw_data(0x09, data, ack=True)
 
     def register_key_callback(self, callback: Callable[[str, str], None]) -> None:
         """
@@ -248,9 +248,9 @@ class ZHProtocolLayer(ZHBaseLayer):
             self._data_handler[0x12] = self._update_gesture_event
             self._data_handler[0x13] = self._update_cursor_event
             if mode == "cursor":
-                self.send_raw_data(NODATA, 0x07, ack=True)
+                self.send_raw_data(0x07, NODATA, ack=True)
             else:
-                self.send_raw_data(NODATA, 0x06, ack=True)
+                self.send_raw_data(0x06, NODATA, ack=True)
             while self._gesture_queue.qsize() > 0:
                 self._gesture_queue.get()
             while self._cursor_queue.qsize() > 0:
@@ -261,14 +261,14 @@ class ZHProtocolLayer(ZHBaseLayer):
                 self._data_handler.pop(0x12)
             if 0x13 in self._data_handler:
                 self._data_handler.pop(0x13)
-            self.send_raw_data(NODATA, 0x08, ack=True)
+            self.send_raw_data(0x08, NODATA, ack=True)
 
     def set_uart_baudrate(self, baudrate: int) -> None:
         """
         设置串口波特率
         """
         self._temp1.reset(baudrate, "u32", int)
-        self.send_raw_data(self._temp1.bytes, 0x0A, ack=True)
+        self.send_raw_data(0x0A, self._temp1.bytes, ack=True)
 
     def send_uart(self, data: bytes, split_pack: int = 128) -> None:
         """
@@ -276,22 +276,22 @@ class ZHProtocolLayer(ZHBaseLayer):
         """
         if len(data) > split_pack:
             for i in range(0, len(data), split_pack):
-                self.send_raw_data(data[i : i + split_pack], 0x0B)
+                self.send_raw_data(0x0B, data[i : i + split_pack])
         else:
-            self.send_raw_data(data, 0x0B)
+            self.send_raw_data(0x0B, data)
 
     def register_uart_callback(self, callback: Callable[[bytes], None]) -> None:
         """
         注册串口回调函数, 同时开启串口接收
         """
         self._data_handler[0x14] = callback
-        self.send_raw_data(b"\x01", 0x0C, ack=True)
+        self.send_raw_data(0x0C, b"\x01", ack=True)
 
     def start_uart(self) -> None:
         """
         开始串口接收
         """
-        self.send_raw_data(b"\x01", 0x0C, ack=True)
+        self.send_raw_data(0x0C, b"\x01", ack=True)
         if 0x14 not in self._data_handler:
             self._data_handler[0x14] = self._default_uart_callback
 
@@ -302,7 +302,7 @@ class ZHProtocolLayer(ZHBaseLayer):
         """
         停止串口接收
         """
-        self.send_raw_data(b"\x00", 0x0C, ack=True)
+        self.send_raw_data(0x0C, b"\x00", ack=True)
 
     @property
     def uart_in_waiting(self) -> int:
@@ -334,7 +334,7 @@ class ZHProtocolLayer(ZHBaseLayer):
         """
         读取RTC时间
         """
-        rawdata = self.send_raw_data(NODATA, 0x0D, request=True)
+        rawdata = self.send_raw_data(0x0D, NODATA, request=True)
         assert isinstance(rawdata, bytes), "RTC Read Error"
         y, m, d, h, mi, s, _ = struct.unpack("<BBBBBBB", rawdata)
         y = y + 2000
@@ -354,4 +354,4 @@ class ZHProtocolLayer(ZHBaseLayer):
         )
         week = dt.weekday() + 1
         data = struct.pack("<BBBBBBB", y, m, d, h, mi, s, week)
-        self.send_raw_data(data, 0x0E, ack=True)
+        self.send_raw_data(0x0E, data, ack=True)

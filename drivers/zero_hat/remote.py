@@ -200,16 +200,18 @@ class ZeroHatClient(ZHAppLayer):
 
     def send_raw_data(
         self,
+        cmd: int,
         data: bytes,
-        option: int,
         ack: bool = False,
-        no_lock: bool = False,
         request: bool = False,
     ):
-        if self._conn is None:
-            raise Exception("Remote not connected")
+        assert self._conn is not None, "Remote not connected"
+        assert self.running, "Device is closed"
+        assert cmd < 0x80, "cmd must be less than 0x80"
+        if data is None or len(data) == 0:
+            data = b"\x00"  # 空数据
         if request:
-            self._request_data = None
-        self._conn.send((data, option, ack, no_lock, request))
+            self._request_data[cmd] = None
+        self._conn.send((cmd, data, ack, request))
         if request:
-            return self._get_request()
+            return self._get_request(cmd)
