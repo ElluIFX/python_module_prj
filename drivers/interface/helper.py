@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 @overload
 def register_interface(
     driver_name: Literal["cp2112"],
-    driver_type: Literal["i2c"],
+    interface_type: Literal["i2c"],
     clock: int = 400000,
     retry: int = 3,
     txrx_leds: bool = True,
@@ -53,7 +53,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["cp2112"],
-    driver_type: Literal["gpio"],
+    interface_type: Literal["gpio"],
     pinmap: Optional[Dict[str, "CP2112AvailablePins"]] = None,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CP2112_GPIOInterfaceBuilder":
@@ -63,7 +63,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["ch347"],
-    driver_type: Literal["i2c"],
+    interface_type: Literal["i2c"],
     clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_I2CInterfaceBuilder":
@@ -73,7 +73,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["ch347"],
-    driver_type: Literal["uart"],
+    interface_type: Literal["uart"],
     uart_index: int = 0,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_UARTInterfaceBuilder":
@@ -83,7 +83,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["ch347"],
-    driver_type: Literal["spi"],
+    interface_type: Literal["spi"],
     enable_cs: bool = True,
     cs: Literal[0, 1] = 0,
     cs_high: bool = False,
@@ -96,7 +96,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["ch347"],
-    driver_type: Literal["gpio"],
+    interface_type: Literal["gpio"],
     pinmap: Optional[Dict[str, "CH347AvailablePins"]] = None,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "CH347_GPIOInterfaceBuilder":
@@ -106,7 +106,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["periphery"],
-    driver_type: Literal["i2c"],
+    interface_type: Literal["i2c"],
     devpath: str,
     keep_alive: bool = False,
     specific_module: Union[None, str, List[str]] = None,
@@ -117,7 +117,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["periphery"],
-    driver_type: Literal["spi"],
+    interface_type: Literal["spi"],
     devpath: str,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "Periphery_SPIInterfaceBuilder":
@@ -127,7 +127,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["periphery"],
-    driver_type: Literal["uart"],
+    interface_type: Literal["uart"],
     devpath: str,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "Periphery_UARTInterfaceBuilder":
@@ -137,7 +137,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["periphery"],
-    driver_type: Literal["gpio"],
+    interface_type: Literal["gpio"],
     pinmap: Optional[Dict[str, str]] = None,
     modemap: Optional[Dict[str, "GpioModes_T"]] = None,
     specific_module: Union[None, str, List[str]] = None,
@@ -148,7 +148,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["pyserial"],
-    driver_type: Literal["uart"],
+    interface_type: Literal["uart"],
     port: str,
     specific_module: Union[None, str, List[str]] = None,
 ) -> "PySerial_UARTInterfaceBuilder":
@@ -158,7 +158,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["smbus2"],
-    driver_type: Literal["i2c"],
+    interface_type: Literal["i2c"],
     bus: Union[int, str],
     specific_module: Union[None, str, List[str]] = None,
 ) -> "SMBus2_I2CInterfaceBuilder":
@@ -168,7 +168,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["spidev"],
-    driver_type: Literal["spi"],
+    interface_type: Literal["spi"],
     channel: int,
     port: int,
     specific_module: Union[None, str, List[str]] = None,
@@ -179,7 +179,7 @@ def register_interface(
 @overload
 def register_interface(
     driver_name: Literal["pca6416a"],
-    driver_type: Literal["gpio"],
+    interface_type: Literal["gpio"],
     pinmap: Optional[Dict[str, "PCAL6416AAvailablePins"]] = None,
     address: int = 0x21,
     cache_reg: bool = True,
@@ -189,15 +189,25 @@ def register_interface(
 
 def register_interface(
     driver_name,
-    driver_type,
+    interface_type,
     *args,
     **xargs,
 ):
+    """
+    Register an interface to the interface manager
+
+    Args:
+        driver_name: Hardware driver, e.g. cp2112, ch347, periphery, pyserial, etc.
+        interface_type: Type of interface, e.g. i2c, spi, uart, gpio, etc.
+
+    Returns:
+        Corresponding interface builder
+    """
     from multiprocessing import current_process
 
     if current_process().name != "MainProcess":
         warnings.warn(
-            f"Registering interface in a sub-process {current_process().name}"
+            f"Registering interface in a sub-process {current_process().name}, it's usually not what you want"
         )
     mod = xargs.pop("specific_module", None)
     if driver_name == "cp2112":
@@ -206,9 +216,9 @@ def register_interface(
             CP2112_I2CInterfaceBuilder,
         )
 
-        if driver_type == "i2c":
+        if interface_type == "i2c":
             return CP2112_I2CInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "gpio":
+        elif interface_type == "gpio":
             return CP2112_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "ch347":
         from .interfaces._ch347 import (
@@ -218,13 +228,13 @@ def register_interface(
             CH347_UARTInterfaceBuilder,
         )
 
-        if driver_type == "i2c":
+        if interface_type == "i2c":
             return CH347_I2CInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "uart":
+        elif interface_type == "uart":
             return CH347_UARTInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "spi":
+        elif interface_type == "spi":
             return CH347_SPIInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "gpio":
+        elif interface_type == "gpio":
             return CH347_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "periphery":
         from .interfaces._periphery import (
@@ -234,36 +244,36 @@ def register_interface(
             Periphery_UARTInterfaceBuilder,
         )
 
-        if driver_type == "i2c":
+        if interface_type == "i2c":
             return Periphery_I2CInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "spi":
+        elif interface_type == "spi":
             return Periphery_SPIInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "uart":
+        elif interface_type == "uart":
             return Periphery_UARTInterfaceBuilder(*args, **xargs).register(mod)
-        elif driver_type == "gpio":
+        elif interface_type == "gpio":
             return Periphery_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "pyserial":
         from .interfaces._pyserial import PySerial_UARTInterfaceBuilder
 
-        if driver_type == "uart":
+        if interface_type == "uart":
             return PySerial_UARTInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "smbus2":
         from .interfaces._smbus2 import SMBus2_I2CInterfaceBuilder
 
-        if driver_type == "i2c":
+        if interface_type == "i2c":
             return SMBus2_I2CInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "spidev":
         from .interfaces._spidev import Spidev_SPIInterfaceBuilder
 
-        if driver_type == "spi":
+        if interface_type == "spi":
             return Spidev_SPIInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "pca6416a":
         from .interfaces._pcal6416a import PCAL6416A_GPIOInterfaceBuilder
 
-        if driver_type == "gpio":
+        if interface_type == "gpio":
             return PCAL6416A_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     raise ValueError(
-        f"Unknown combination of driver '{driver_name}' and type '{driver_type}'"
+        f"Unknown combination of driver '{driver_name}' and type '{interface_type}'"
     )
 
 
@@ -304,6 +314,13 @@ def request_interface(
     *args,
     **xargs,
 ):
+    """
+    Request an interface from the interface manager
+
+    Args:
+        interface_type: Type of interface, e.g. i2c, spi, uart, gpio, etc.
+        module_name: who am I, should same as the module class name
+    """
     if interface_type == "i2c":
         return InterfaceManager.request_interface("i2c", module_name, *args, **xargs)
     elif interface_type == "gpio":

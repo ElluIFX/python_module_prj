@@ -28,7 +28,7 @@ class CSP202TT(object):
     """
 
     def __init__(self, start_listen=True) -> None:
-        self._ser = request_interface("uart","CSP202TT", 256000)
+        self._ser = request_interface("uart", "CSP202TT", 256000)
         self.targets = [Target(0, 0, 0, 0)] * 3
         self.last_update_time = 0
         if start_listen:
@@ -48,7 +48,7 @@ class CSP202TT(object):
 
     @property
     def insight_num(self) -> int:
-        return len([t for t in self.targets if t.x != 0 or t.y != 0])
+        return len([t for t in self.targets if t.distance != 0])
 
     def _unpack_one(self, data: bytes) -> Target:
         x, y, s, r = unpack("HHHH", data)  # 4 uint16_t
