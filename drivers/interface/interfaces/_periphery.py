@@ -3,9 +3,9 @@ from typing import Any, Dict, List, Optional, Union
 
 from periphery import I2C, SPI, CdevGPIO, I2CError, Serial
 
-from .errors import InterfaceNotFoundError
-from .manager import BaseInterfaceBuilder
-from .templates import (
+from ..errortype import InterfaceNotFoundError
+from ..manager import BaseInterfaceBuilder
+from ..template import (
     GPIOInterfaceTemplate,
     GpioModes_T,
     I2CInterfaceTemplate,
@@ -13,7 +13,7 @@ from .templates import (
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
-from .utils import get_permission, list_gpio
+from ..utils import get_permission, list_gpio
 
 
 class Periphery_I2CMessage(I2CMessageTemplate):
@@ -145,6 +145,7 @@ class Periphery_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, devpath: str, keep_alive: bool = False) -> None:
         self._devpath = devpath
         self._keep_alive = keep_alive
+        super().__init__()
 
     def build(self, address: int) -> Periphery_I2CInterface:
         return Periphery_I2CInterface(self._devpath, address, self._keep_alive)
@@ -242,6 +243,7 @@ class Periphery_UARTInterfaceBuilder(BaseInterfaceBuilder):
 
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
+        super().__init__()
 
     def build(self, baudrate: int) -> Periphery_UARTInterface:
         return Periphery_UARTInterface(self._devpath, baudrate)
@@ -328,6 +330,7 @@ class Periphery_SPIInterfaceBuilder(BaseInterfaceBuilder):
 
     def __init__(self, devpath: str) -> None:
         self._devpath = devpath
+        super().__init__()
 
     def build(self, mode: int, speed_hz: int) -> Periphery_SPIInterface:
         return Periphery_SPIInterface(self._devpath, mode, speed_hz)
@@ -356,9 +359,10 @@ class Periphery_GPIOInterface(GPIOInterfaceTemplate):
         return pin_name
 
     @lru_cache(1)
-    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+    def get_available_pinmodes(self) -> Dict[str, List[GpioModes_T]]:
         return {
             self._pinmap_inv.get(name, name): [
+                "none",
                 "input_no_pull",
                 "input_pull_down",
                 "input_pull_up",
@@ -437,6 +441,7 @@ class Periphery_GPIOInterfaceBuilder(BaseInterfaceBuilder):
     ) -> None:
         self._pinmap = pinmap
         self._modemap = modemap
+        super().__init__()
 
     def build(self) -> Periphery_GPIOInterface:
         return Periphery_GPIOInterface(self._pinmap, self._modemap)

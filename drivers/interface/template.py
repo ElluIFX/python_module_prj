@@ -1,10 +1,12 @@
+import time
 from functools import cached_property
 from io import BufferedRWPair, TextIOWrapper
-from typing import Callable, Dict, List, Literal, Optional, Union, final
+from threading import Thread
+from typing import Callable, Dict, List, Literal, Optional, Tuple, Union, final
 
 from loguru import logger
 
-from .errors import InterfaceNotFoundError
+from .errortype import InterfaceNotFoundError
 
 __all__ = [
     "I2CMessageTemplate",
@@ -13,9 +15,9 @@ __all__ = [
     "UARTInterfaceTemplate",
     "GPIOInterfaceTemplate",
     "GpioModes_T",
-    "IntModes_T",
+    "IntEdges_T",
     "GpioModes",
-    "IntModes",
+    "IntEdges",
     "GPIOPinInstance",
     "BaseInterfaceTemplate",
 ]
@@ -41,7 +43,7 @@ class BaseInterfaceTemplate:
         """
         Reopen the interface
         """
-        raise NotImplementedError("Interface can not be reopened")
+        raise RuntimeError("Interface can not be reopened")
 
     @final
     def destroy(self):
@@ -403,6 +405,7 @@ class UARTInterfaceTemplate(BaseInterfaceTemplate):
 
 
 GpioModes = [
+    "none",
     "input_no_pull",
     "input_pull_up",
     "input_pull_down",
@@ -412,13 +415,17 @@ GpioModes = [
     "pwm_output",
     "analog_input",
     "analog_output",
-    "interrupt_no_pull",
-    "interrupt_pull_up",
-    "interrupt_pull_down",
     "special_func",
 ]
 
 IntModes = [
+    "none",
+    "interrupt_no_pull",
+    "interrupt_pull_up",
+    "interrupt_pull_down",
+]
+
+IntEdges = [
     "none",
     "rising_edge",
     "falling_edge",
@@ -438,13 +445,17 @@ GpioModes_T = Literal[
     "pwm_output",
     "analog_input",
     "analog_output",
-    "interrupt_no_pull",
-    "interrupt_pull_up",
-    "interrupt_pull_down",
     "special_func",
 ]
 
 IntModes_T = Literal[
+    "none",
+    "interrupt_no_pull",
+    "interrupt_pull_up",
+    "interrupt_pull_down",
+]
+
+IntEdges_T = Literal[
     "none",
     "rising_edge",
     "falling_edge",
@@ -461,14 +472,20 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
 
         Note: For most drivers, you must call this function to \
               initialize the pin before using it.
+              Better check get_available_pinmodes() before setting.
               For interrupt mode, call set_interrupt() instead.
-              Better check get_available_pinmode() before setting.
         """
         raise NotImplementedError()
 
     def get_mode(self, pin_name: str) -> GpioModes_T:
         """
         Return the mode of a pin
+        """
+        raise NotImplementedError()
+
+    def get_available_pinmodes(self) -> Dict[str, List[GpioModes_T]]:
+        """
+        Return all available pins with their available modes
         """
         raise NotImplementedError()
 
@@ -531,44 +548,42 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
         """
         raise NotImplementedError()
 
-    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+    def get_available_interrupts(
+        self
+    ) -> Dict[str, Tuple[List[IntModes_T], List[IntEdges_T]]]:
         """
-        Return all available pins with their available modes
+        Return all available interrupt pins with their available modes and edges
         """
         raise NotImplementedError()
-
-    def get_available_pinmode(self, pin_name: str) -> List[GpioModes_T]:
-        """
-        Return all available modes of a pin
-        """
-        return self.get_available_pins()[pin_name]
 
     def set_interrupt(
         self,
         pin_name: str,
-        intmode: IntModes_T,
-        pinmode: GpioModes_T,
-        callback: Optional[Callable[[], None]] = None,
+        int_mode: IntModes_T,
+        int_edge: IntEdges_T,
+        callback: Optional[Callable[[str], None]] = None,
     ):
         """
         Set the interrupt mode of a pin
 
-        pinmode: the mode of the pin, must be interrupt_xxx
-        callback: will be called when interrupt triggered, pass None to unregister
+        int_mode: the interrupt mode of the pin, see IntModes
+        int_edge: the interrupt edge of the pin, see IntEdges
+        callback: will be called when interrupt triggered, pass pin_name as argument, \
+                  if no callback, the int state should be polled by poll_interrupt()
+
+        Note:
+            if driver does not support callback, a thread will be created \
+            to poll the interrupt.
         """
         raise NotImplementedError()
 
-    def poll_interrupt(self, pin_name: str, timeout: Optional[float] = None) -> bool:
+    def poll_interrupt(
+        self, pin_name: Union[List[str], str], timeout: Optional[float] = None
+    ) -> Optional[Union[str, List[str]]]:
         """
-        Poll the interrupt of a pin
+        Poll the interrupt of a pin or multiple pins
 
-        return: True if interrupt triggered, False if timeout
-        """
-        raise NotImplementedError()
-
-    def read_interrupt(self, pin_name: str) -> bool:
-        """
-        Read the interrupt state of a pin
+        return: pin_name(s) if interrupt triggered, None if timeout
         """
         raise NotImplementedError()
 
@@ -577,9 +592,73 @@ class GPIOInterfaceTemplate(BaseInterfaceTemplate):
         """
         Return a GPIO instance
         """
-        if pin_name not in self.get_available_pins():
+        if pin_name not in self.get_available_pinmodes():
             raise InterfaceNotFoundError(f"Pin {pin_name} not available")
         return GPIOPinInstance(self, pin_name)
+
+    _soft_int_state: Dict[str, bool] = {}
+
+    def set_soft_interrupt(
+        self,
+        pin_name: str,
+        int_mode: IntModes_T,
+        int_edge: IntEdges_T,
+        callback: Callable[[str], None],
+        interval: float = 0.01,
+        fallback: bool = True,
+    ):
+        """
+        Set the interrupt mode of a pin, using threaded software polling
+
+        int_mode: the interrupt mode of the pin, see IntModes
+        int_edge: the interrupt edge of the pin, see IntEdges
+        callback: will be called when interrupt triggered, pass pin_name as argument
+        interval: the interval of polling pin state
+        fallback: if driver supports callback, use hardware interrupt instead
+        """
+        if fallback:
+            req = self.get_available_interrupts().get(pin_name)
+            if req is not None and int_mode in req[0] and int_edge in req[1]:
+                self.set_interrupt(pin_name, int_mode, int_edge, callback)
+                return
+        if "none" in [int_mode, int_edge]:
+            if pin_name in self._soft_int_state:
+                self._soft_int_state[pin_name] = False
+            return
+        int_mode.replace("interrupt_", "input_")
+        self.set_mode(pin_name, int_mode)  # type: ignore
+        self._soft_int_state[pin_name] = True
+        Thread(
+            target=self._soft_int_worker,
+            args=(pin_name, int_edge, callback, interval),
+            daemon=True,
+        ).start()
+
+    def _soft_int_worker(
+        self,
+        pin_name: str,
+        int_edge: IntEdges_T,
+        callback: Callable[[str], None],
+        interval: float,
+    ):
+        """
+        Worker for soft interrupt
+        """
+        if int_edge == "low_level":
+            int_edge = "falling_edge"
+        elif int_edge == "high_level":
+            int_edge = "rising_edge"
+        last_state = self.read(pin_name)
+        while self._soft_int_state.get(pin_name, False):
+            time.sleep(interval)
+            state = self.read(pin_name)
+            if (
+                (int_edge == "rising_edge" and state and not last_state)
+                or (int_edge == "falling_edge" and not state and last_state)
+                or (int_edge == "both_edge" and state != last_state)
+            ):
+                callback(pin_name)
+            last_state = state
 
 
 class GPIOPinInstance:
@@ -666,29 +745,37 @@ class GPIOPinInstance:
         """
         Return all available modes of this pin
         """
-        return self._io.get_available_pinmode(self._pin_name)
+        return self._io.get_available_pinmodes()[self._pin_name]
+
+    def get_available_interrupt(
+        self
+    ) -> Optional[Tuple[List[IntModes_T], List[IntEdges_T]]]:
+        """
+        Return all available interrupt modes and edges of this pin
+
+        Return None if this pin does not support interrupt
+        """
+        return self._io.get_available_interrupts().get(self._pin_name)
 
     def set_interrupt(
         self,
-        intmode: IntModes_T,
-        pinmode: GpioModes_T,
-        callback: Optional[Callable[[], None]] = None,
+        int_mode: IntModes_T,
+        int_edge: IntEdges_T,
+        callback: Optional[Callable[[str], None]] = None,
     ):
         """
         Set the interrupt mode of this pin
 
-        pinmode: the mode of the pin, must be interrupt_xxx
-        callback: will be called when interrupt triggered, pass None to unregister
-        """
-        self._io.set_interrupt(self._pin_name, intmode, pinmode, callback)
+        int_mode: the interrupt mode of the pin, see IntModes
+        int_edge: the interrupt edge of the pin, see IntEdges
+        callback: will be called when interrupt triggered, pass pin_name as argument, \
+                  if no callback, the int state should be polled by poll_interrupt()
 
-    def read_interrupt(self) -> bool:
+        Note:
+            if driver does not support callback, a thread will be created \
+            to poll the interrupt.
         """
-        Read the interrupt state of this pin
-        """
-        return self._io.read_interrupt(self._pin_name)
-
-    int_state = property(read_interrupt)
+        self._io.set_interrupt(self._pin_name, int_mode, int_edge, callback)
 
     def poll_interrupt(self, timeout: Optional[float] = None) -> bool:
         """
@@ -696,4 +783,4 @@ class GPIOPinInstance:
 
         return: True if interrupt triggered, False if timeout
         """
-        return self._io.poll_interrupt(self._pin_name, timeout)
+        return self._io.poll_interrupt(self._pin_name, timeout) is not None

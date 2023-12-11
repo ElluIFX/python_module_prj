@@ -2,10 +2,10 @@ from functools import cached_property, lru_cache
 from threading import Lock
 from typing import Dict, List, Literal, Optional, Union
 
-from .driver.cp2112 import CP2112, _reset_error_type
-from .errors import InterfacefIOError, InterfaceNotFoundError
-from .manager import BaseInterfaceBuilder
-from .templates import (
+from ..drivers.cp2112 import CP2112, _reset_error_type
+from ..errortype import InterfacefIOError, InterfaceNotFoundError
+from ..manager import BaseInterfaceBuilder
+from ..template import (
     BaseInterfaceTemplate,
     GPIOInterfaceTemplate,
     GpioModes_T,
@@ -62,7 +62,8 @@ class CP2112_I2CInterface(I2CInterfaceTemplate):
 
     @address.setter
     def address(self, address: int):
-        assert address != 0x00, "Address 0x00 is not supported by CP2112"
+        if address == 0x00:
+            raise InterfacefIOError("Address 0x00 is not supported by CP2112")
         self._addr = address
 
     def write_raw_byte(self, value: int):
@@ -132,6 +133,7 @@ class CP2112_I2CInterfaceBuilder(BaseInterfaceBuilder):
         self._clock = clock
         self._retry = retry
         self._txrx_leds = txrx_leds
+        super().__init__()
 
     def build(self, address: int) -> CP2112_I2CInterface:
         global _dev, _shared_count
@@ -174,26 +176,29 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
             raise InterfaceNotFoundError(f"Pin {pin_name} not found")
         return pin_name
 
-    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+    def get_available_pinmodes(self) -> Dict[str, List[GpioModes_T]]:
         lst: Dict[str, List[GpioModes_T]] = {
             "Pin_0": [
+                "none",
                 "input_no_pull",
                 "output_open_drain",
                 "output_push_pull",
                 "special_func",
             ],
             "Pin_1": [
+                "none",
                 "input_no_pull",
                 "output_open_drain",
                 "output_push_pull",
                 "special_func",
             ],
-            "Pin_2": ["input_no_pull", "output_open_drain", "output_push_pull"],
-            "Pin_3": ["input_no_pull", "output_open_drain", "output_push_pull"],
-            "Pin_4": ["input_no_pull", "output_open_drain", "output_push_pull"],
-            "Pin_5": ["input_no_pull", "output_open_drain", "output_push_pull"],
-            "Pin_6": ["input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_2": ["none", "input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_3": ["none", "input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_4": ["none", "input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_5": ["none", "input_no_pull", "output_open_drain", "output_push_pull"],
+            "Pin_6": ["none", "input_no_pull", "output_open_drain", "output_push_pull"],
             "Pin_7": [
+                "none",
                 "input_no_pull",
                 "output_open_drain",
                 "output_push_pull",
@@ -208,7 +213,7 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
         offset = int(pin_name[-1])
         with _lock:
             dir, push_pull, special, clock_divider = _dev.get_gpio_config()
-        if mode == "output_pwm" and pin_name == "Pin_7":
+        if mode == "pwm_output" and pin_name == "Pin_7":
             special = _SET_BIT(special, 0)
             dir = _SET_BIT(dir, offset)
             push_pull = _SET_BIT(push_pull, offset)
@@ -248,6 +253,7 @@ class CP2112_GPIOInterface(GPIOInterfaceTemplate):
             clock_divider = 0
         else:
             clock_divider = 48000000 // (2 * freq)
+        clock_divider = min(255, clock_divider)
         with _lock:
             dir, push_pull, special, _ = _dev.get_gpio_config()
             special = _SET_BIT(special, 0)
@@ -278,11 +284,12 @@ class CP2112_GPIOInterfaceBuilder(BaseInterfaceBuilder):
         pinmap: Optional[Dict[str, CP2112AvailablePins]] = None,
     ) -> None:
         self._pinmap = pinmap
+        super().__init__()
 
     def build(self) -> CP2112_GPIOInterface:
         global _dev, _shared_count
         if _dev is None:
-            _dev = CP2112()
+            _dev = CP2112(txrx_leds=False)
         _shared_count += 1
         return CP2112_GPIOInterface(self._pinmap)
 

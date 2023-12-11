@@ -1,10 +1,10 @@
 from functools import lru_cache
 from typing import Dict, List, Literal, Optional
 
-from .driver.pcal6416a import PCAL6416A
-from .errors import InterfaceNotFoundError
-from .manager import BaseInterfaceBuilder
-from .templates import GPIOInterfaceTemplate, GpioModes_T
+from ..drivers.pcal6416a import PCAL6416A
+from ..errortype import InterfaceNotFoundError
+from ..manager import BaseInterfaceBuilder
+from ..template import GPIOInterfaceTemplate, GpioModes_T
 
 PCAL6416AAvailablePins = Literal[
     "P00", "P01", "P02", "P03", "P04", "P05", "P06", "P07",
@@ -32,7 +32,7 @@ class PCAL6416A_GPIOInterface(GPIOInterfaceTemplate):
             raise InterfaceNotFoundError(f"Pin {pin_name} not found")
         return pin_name, int(pin_name[1]), int(pin_name[2])
 
-    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+    def get_available_pinmodes(self) -> Dict[str, List[GpioModes_T]]:
         lst: Dict[str, List[GpioModes_T]] = {
             f"P{port}{pin}": [
                 "input_no_pull",
@@ -104,6 +104,7 @@ class PCAL6416A_GPIOInterfaceBuilder(BaseInterfaceBuilder):
         self._pinmap = pinmap
         self._address = address
         self._cache_reg = cache_reg
+        super().__init__()
 
     def build(self) -> PCAL6416A_GPIOInterface:
         return PCAL6416A_GPIOInterface(self._pinmap, self._address, self._cache_reg)

@@ -2,9 +2,9 @@ from typing import Optional
 
 from serial import Serial
 
-from .manager import BaseInterfaceBuilder
-from .templates import UARTInterfaceTemplate
-from .utils import get_permission
+from ..manager import BaseInterfaceBuilder
+from ..template import UARTInterfaceTemplate
+from ..utils import get_permission
 
 
 class PySerial_UARTInterface(UARTInterfaceTemplate):
@@ -95,6 +95,7 @@ class PySerial_UARTInterfaceBuilder(BaseInterfaceBuilder):
 
     def __init__(self, port: str) -> None:
         self._port = port
+        super().__init__()
 
     def build(self, baudrate: int) -> PySerial_UARTInterface:
         return PySerial_UARTInterface(self._port, baudrate)

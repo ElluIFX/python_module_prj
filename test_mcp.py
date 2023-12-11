@@ -7,10 +7,14 @@ from drivers.interface import register_interface
 from drivers.mcp3421 import MCP3421
 from drivers.mcp4725 import MCP4725
 
-register_interface("cp2112", "i2c", clock=400000)
+register_interface("ch347", "i2c", clock=400000)
 
 dac = MCP4725(vref=3.39409744)
 adc = MCP3421()
+adc.set_resolution(18)
+adc.set_calibration_factor(10, 0)
+while True:
+    print(f"ADC: {adc.voltage:.6f}V DAC: {dac.voltage:.6f}V" + " " * 10, end="\r")
 
 raw_list = [x for x in range(0, 2600, 200)]
 reads = []

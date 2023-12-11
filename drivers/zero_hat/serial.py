@@ -5,7 +5,7 @@ from typing import Union
 
 from loguru import logger
 
-from drivers.interface.templates import UARTInterfaceTemplate
+from drivers.interface.template import UARTInterfaceTemplate
 
 
 class SerialReader:

@@ -3,10 +3,12 @@ import time
 import cv2
 import numpy as np
 
+from drivers.ina226 import INA226, INA226Monitor
 from drivers.interface import register_interface
 from drivers.vfd import VFD
 
 register_interface("ch347", "spi")
+register_interface("ch347", "i2c")
 
 
 class fps_counter:
@@ -35,55 +37,65 @@ class fps_counter:
         return self._fps
 
 
-video = cv2.VideoCapture("badapple.mp4")
+def main():
+    video = cv2.VideoCapture("badapple.mp4")
 
-disp = VFD()
-disp.init_spi()
-disp.init_vfd(dma=True)
+    disp = VFD()
+    disp.init_spi()
+    disp.init_vfd(dma=True)
 
-fpsc = fps_counter()
-frame_num = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-frame_cnt = 0
-while True:
-    # time.sleep(0.01)
-    ret, frame = video.read()
-    if not ret:
-        break
-    fpsc.update()
-    frame_cnt += 1
-    frame = cv2.resize(frame, (128, 64))
-    frame = np.concatenate((frame, np.zeros((64, 128, 3), dtype=np.uint8)), axis=1)
-    cv2.putText(
-        frame,
-        "Bad Apple",
-        (140, 15),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.45,
-        (255, 255, 255),
-        1,
-    )
-    cv2.putText(
-        frame,
-        f"FPS:{fpsc.fps:.2f}",
-        (140, 30),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.45,
-        (255, 255, 255),
-        1,
-    )
-    cv2.putText(
-        frame,
-        f"FRM:{frame_cnt}/{frame_num}",
-        (140, 45),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.45,
-        (255, 255, 255),
-        1,
-    )
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    disp.dma_write_cv2(gray)
-    cv2.imshow("frame", gray)
-    if cv2.waitKey(1) & 0xFF == ord("q"):
-        break
+    fpsc = fps_counter()
+    frame_num = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    frame_cnt = 0
+    cv2.namedWindow("frame", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("frame", disp.WIDTH, disp.HEIGHT)
+    ina = INA226(software_filter_N=10)
+    ina.set_current_measurement_range(0.8)
+    INA226Monitor(ina, save_data=True).start()
+    while True:
+        # time.sleep(0.01)
+        ret, frame = video.read()
+        if not ret:
+            break
+        fpsc.update()
+        frame_cnt += 1
+        frame = cv2.resize(frame, (128, 64))
+        frame = np.concatenate((frame, np.zeros((64, 128, 3), dtype=np.uint8)), axis=1)
+        cv2.putText(
+            frame,
+            "Bad Apple",
+            (140, 15),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+        )
+        cv2.putText(
+            frame,
+            f"FPS:{fpsc.fps:.2f}",
+            (140, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+        )
+        cv2.putText(
+            frame,
+            f"FRM:{frame_cnt}/{frame_num}",
+            (140, 45),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            (255, 255, 255),
+            1,
+        )
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        disp.dma_write_cv2(gray)
+        cv2.imshow("frame", gray)
+        if cv2.waitKey(1) & 0xFF == ord("q"):
+            break
 
-cv2.destroyAllWindows()
+    cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()

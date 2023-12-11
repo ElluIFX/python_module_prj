@@ -2,7 +2,7 @@ from typing import Dict, List, Literal, Optional, Union, final
 
 from loguru import logger
 
-from .templates import (
+from .template import (
     BaseInterfaceTemplate,
     GPIOInterfaceTemplate,
     I2CInterfaceTemplate,
@@ -39,7 +39,20 @@ class BaseInterfaceBuilder:
 
         Pass parameters that are globally shared
         """
-        raise NotImplementedError()
+        self._built_interfaces: List[BaseInterfaceTemplate] = []
+        self._registered = False
+
+    @final
+    def _internal_build(self, *args, **kwargs) -> AvailableTemplates:
+        instance = self.build(*args, **kwargs)
+        instance._on_destroy.append(self._internal_destroy)
+        self._built_interfaces.append(instance)
+        return instance
+
+    @final
+    def _internal_destroy(self, instance: BaseInterfaceTemplate):
+        self.destroy(instance)
+        self._built_interfaces.remove(instance)
 
     def build(self, *args, **kwargs) -> AvailableTemplates:
         """
@@ -49,20 +62,17 @@ class BaseInterfaceBuilder:
         """
         raise NotImplementedError()
 
-    @final
-    def _internal_build(self, *args, **kwargs) -> AvailableTemplates:
-        """
-        Internal build function
-
-        This function will be called by the interface manager
-        """
-        instance = self.build(*args, **kwargs)
-        instance._on_destroy.append(self.destroy)
-        return instance
-
     def destroy(self, instance: BaseInterfaceTemplate):
         """
-        Destroy the interface
+        Called when destroying a interface
+
+        instance: the interface instance returned by build(), use \
+                  id(instance) to identify the instance
+
+        @note: destroying can occur in three cases:
+            1. the module who requested this interface is being garbage collected
+            2. this interface builder is being unregistered
+            3. the module manually calls destroy()
         """
         ...
 
@@ -76,6 +86,7 @@ class BaseInterfaceBuilder:
         assert (
             self.dev_type is not None
         ), "Invalid interface builder (dev_type not specified)"
+        assert not self._registered, "Interface already registered"
         if specific_module is None:
             InterfaceManager.register_global_interface(self.dev_type, self)
         else:
@@ -83,6 +94,7 @@ class BaseInterfaceBuilder:
                 self.dev_type, specific_module, self
             )
         self._specific_module = specific_module
+        self._registered = True
         return self
 
     @final
@@ -91,12 +103,20 @@ class BaseInterfaceBuilder:
         Unregister the interface from the interface manager
         """
         assert self.dev_type is not None, "Invalid interface builder"
+        assert self._registered, "Interface not registered"
+        for instance in self._built_interfaces:
+            try:
+                instance.destroy()
+            except Exception:
+                logger.exception("Failed to destroy interfaces when unregistering")
+        self._built_interfaces.clear()
         if self._specific_module is None:
             InterfaceManager.unregister_global_interface(self.dev_type)
         else:
             InterfaceManager.unregister_specific_interface(
                 self.dev_type, self._specific_module
             )
+        self._registered = False
         return self
 
 

@@ -1,28 +1,31 @@
 import os
 import re
 import subprocess as sp
+import time
 from functools import lru_cache
 from typing import Dict
 
 from loguru import logger
 
-from .errors import InterfacefIOError
+from .errortype import InterfacefIOError
 
 
-def i2c_bus_scanner(from_addr: int = 0x01, to_addr: int = 0x7F) -> list[int]:
+def i2c_bus_scan(highest_addr: int = 0x78) -> list[int]:
     from . import request_interface
 
-    i2c_bus = request_interface("i2c", "i2c-bus-scanner", from_addr)
+    i2c_bus = request_interface("i2c", "i2c-bus-scanner", 0x01)
     addrs = []
-    if to_addr > 0x7F:
-        to_addr = 0x7F
-    for addr in range(from_addr, to_addr + 1):
+    for addr in range(highest_addr + 1):
         try:
             i2c_bus.address = addr
+        except InterfacefIOError as e:
+            logger.warning(f"Address {hex(addr)} not supported by bus driver: {e}")
+            continue
+        try:
             if i2c_bus.check_address():
                 addrs.append(addr)
-        except InterfacefIOError:
-            pass
+        except InterfacefIOError as e:
+            logger.warning(f"Address {hex(addr)} communication failed: {e}")
     logger.info(f"I2C bus scan result: {[hex(addr) for addr in addrs]}")
     i2c_bus.destroy()
     return addrs
@@ -33,10 +36,10 @@ def get_permission(path: str):
     Get permission to access device
     """
     if os.name != "posix":
-        raise Exception(f"Permission denied to access {path:str}")
+        raise RuntimeError(f"Permission denied to access {path:str}")
     logger.warning(f"Permission denied to access {path:str}, tring get permission")
     if os.system(f"sudo chmod 666 {path:str}") != 0:
-        raise Exception(f"Access to {path:str} failed, please check your permission")
+        raise RuntimeError(f"Access to {path:str} failed, please check your permission")
 
 
 @lru_cache(64)
@@ -90,3 +93,31 @@ class FakeLock:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         pass
+
+
+def retry_if_raise(func, retry=3, delay=0.01):
+    def wrapper(*args, **kwargs):
+        for i in range(retry):
+            try:
+                return func(*args, **kwargs)
+            except Exception:
+                if i == retry - 1:
+                    raise
+                logger.debug(f"Retry-{i+1}: {func.__name__}")
+                time.sleep(delay)
+        raise RuntimeError("Unreachable")
+
+    return wrapper
+
+
+def retry_if_none(func, retry=3, delay=0.01):
+    def wrapper(*args, **kwargs):
+        for i in range(retry):
+            ret = func(*args, **kwargs)
+            if ret is not None:
+                return ret
+            logger.debug(f"Retry-{i+1}: {func.__name__}")
+            time.sleep(delay)
+        return None
+
+    return wrapper

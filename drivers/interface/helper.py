@@ -1,7 +1,8 @@
+import warnings
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union, overload
 
 from .manager import InterfaceManager
-from .templates import (
+from .template import (
     GPIOInterfaceTemplate,
     I2CInterfaceTemplate,
     SPIInterfaceTemplate,
@@ -9,29 +10,32 @@ from .templates import (
 )
 
 if TYPE_CHECKING:
-    from .if_ch347 import (
+    from .interfaces._ch347 import (
         CH347_GPIOInterfaceBuilder,
         CH347_I2CInterfaceBuilder,
         CH347_SPIInterfaceBuilder,
         CH347_UARTInterfaceBuilder,
         CH347AvailablePins,
     )
-    from .if_cp2112 import (
+    from .interfaces._cp2112 import (
         CP2112_GPIOInterfaceBuilder,
         CP2112_I2CInterfaceBuilder,
         CP2112AvailablePins,
     )
-    from .if_pcal6416a import PCAL6416A_GPIOInterfaceBuilder, PCAL6416AAvailablePins
-    from .if_periphery import (
+    from .interfaces._pcal6416a import (
+        PCAL6416A_GPIOInterfaceBuilder,
+        PCAL6416AAvailablePins,
+    )
+    from .interfaces._periphery import (
         Periphery_GPIOInterfaceBuilder,
         Periphery_I2CInterfaceBuilder,
         Periphery_SPIInterfaceBuilder,
         Periphery_UARTInterfaceBuilder,
     )
-    from .if_pyserial import PySerial_UARTInterfaceBuilder
-    from .if_smbus2 import SMBus2_I2CInterfaceBuilder
-    from .if_spidev import Spidev_SPIInterfaceBuilder
-    from .templates import GpioModes_T
+    from .interfaces._pyserial import PySerial_UARTInterfaceBuilder
+    from .interfaces._smbus2 import SMBus2_I2CInterfaceBuilder
+    from .interfaces._spidev import Spidev_SPIInterfaceBuilder
+    from .template import GpioModes_T
 
 
 @overload
@@ -189,16 +193,25 @@ def register_interface(
     *args,
     **xargs,
 ):
+    from multiprocessing import current_process
+
+    if current_process().name != "MainProcess":
+        warnings.warn(
+            f"Registering interface in a sub-process {current_process().name}"
+        )
     mod = xargs.pop("specific_module", None)
     if driver_name == "cp2112":
-        from .if_cp2112 import CP2112_GPIOInterfaceBuilder, CP2112_I2CInterfaceBuilder
+        from .interfaces._cp2112 import (
+            CP2112_GPIOInterfaceBuilder,
+            CP2112_I2CInterfaceBuilder,
+        )
 
         if driver_type == "i2c":
             return CP2112_I2CInterfaceBuilder(*args, **xargs).register(mod)
         elif driver_type == "gpio":
             return CP2112_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "ch347":
-        from .if_ch347 import (
+        from .interfaces._ch347 import (
             CH347_GPIOInterfaceBuilder,
             CH347_I2CInterfaceBuilder,
             CH347_SPIInterfaceBuilder,
@@ -214,7 +227,7 @@ def register_interface(
         elif driver_type == "gpio":
             return CH347_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "periphery":
-        from .if_periphery import (
+        from .interfaces._periphery import (
             Periphery_GPIOInterfaceBuilder,
             Periphery_I2CInterfaceBuilder,
             Periphery_SPIInterfaceBuilder,
@@ -230,22 +243,22 @@ def register_interface(
         elif driver_type == "gpio":
             return Periphery_GPIOInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "pyserial":
-        from .if_pyserial import PySerial_UARTInterfaceBuilder
+        from .interfaces._pyserial import PySerial_UARTInterfaceBuilder
 
         if driver_type == "uart":
             return PySerial_UARTInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "smbus2":
-        from .if_smbus2 import SMBus2_I2CInterfaceBuilder
+        from .interfaces._smbus2 import SMBus2_I2CInterfaceBuilder
 
         if driver_type == "i2c":
             return SMBus2_I2CInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "spidev":
-        from .if_spidev import Spidev_SPIInterfaceBuilder
+        from .interfaces._spidev import Spidev_SPIInterfaceBuilder
 
         if driver_type == "spi":
             return Spidev_SPIInterfaceBuilder(*args, **xargs).register(mod)
     elif driver_name == "pca6416a":
-        from .if_pcal6416a import PCAL6416A_GPIOInterfaceBuilder
+        from .interfaces._pcal6416a import PCAL6416A_GPIOInterfaceBuilder
 
         if driver_type == "gpio":
             return PCAL6416A_GPIOInterfaceBuilder(*args, **xargs).register(mod)

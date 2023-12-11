@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING, List, Optional, Union
 
 from smbus2 import SMBus, i2c_msg
 
-from .manager import BaseInterfaceBuilder
-from .templates import I2CInterfaceTemplate, I2CMessageTemplate
-from .utils import get_permission
+from ..manager import BaseInterfaceBuilder
+from ..template import I2CInterfaceTemplate, I2CMessageTemplate
+from ..utils import get_permission
 
 
 def build_msg(addr) -> type["SMBus2_I2CMessage"]:
@@ -152,6 +152,7 @@ class SMBus2_I2CInterfaceBuilder(BaseInterfaceBuilder):
     def __init__(self, bus: Union[int, str], keep_alive: bool = False):
         self._bus = bus
         self._keep_alive = keep_alive
+        super().__init__()
 
     def build(self, address: int) -> SMBus2_I2CInterface:
         return SMBus2_I2CInterface(self._bus, address)

@@ -2718,7 +2718,7 @@ class BMI160(object):
             )
         logger.info("BMI160 Calibration Complete")
 
-    def kalman_calibrate(self, N=1000, dt=0.001):
+    def kalman_calibrate(self, N=200, dt=0.001):
         """
         Calibrate the Kalman Filter
         N: Number of samples to use for calibration

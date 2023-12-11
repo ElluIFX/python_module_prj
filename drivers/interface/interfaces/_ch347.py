@@ -6,15 +6,15 @@ from typing import Dict, List, Literal, Optional, Union
 
 from loguru import logger
 
-from .driver.ch347 import CH347
-from .errors import (
+from ..drivers.ch347 import CH347
+from ..errortype import (
     InterfacefIOError,
     InterfaceInitError,
     InterfaceIOTimeout,
     InterfaceNotFoundError,
 )
-from .manager import BaseInterfaceBuilder
-from .templates import (
+from ..manager import BaseInterfaceBuilder
+from ..template import (
     BaseInterfaceTemplate,
     GPIOInterfaceTemplate,
     GpioModes_T,
@@ -23,6 +23,7 @@ from .templates import (
     SPIInterfaceTemplate,
     UARTInterfaceTemplate,
 )
+from ..utils import retry_if_raise
 
 _dev: Optional[CH347] = None  # device should be opened only once
 _lock = Lock()
@@ -178,7 +179,9 @@ class CH347_I2CInterfaceBuilder(BaseInterfaceBuilder):
         clock: Literal[20000, 50000, 100000, 200000, 400000, 750000, 1000000] = 400000,
     ) -> None:
         self._clock = clock
+        super().__init__()
 
+    @retry_if_raise
     def build(self, address: int) -> CH347_I2CInterface:
         _open_dev()
         assert _dev is not None
@@ -213,6 +216,7 @@ class CH347_UARTInterface(UARTInterfaceTemplate):
         self._reset()
         return super().__init__()
 
+    @retry_if_raise
     def _reset(self):
         assert _dev is not None
         if not _dev.uart_init(
@@ -343,6 +347,7 @@ class CH347_UARTInterfaceBuilder(BaseInterfaceBuilder):
 
     def __init__(self, uart_index: int = 0) -> None:
         self._idx = uart_index
+        super().__init__()
 
     def build(self, baudrate: int) -> CH347_UARTInterface:
         return CH347_UARTInterface(self._idx, baudrate)
@@ -372,6 +377,7 @@ class CH347_SPIInterface(SPIInterfaceTemplate):
         self._reset()
         return super().__init__()
 
+    @retry_if_raise
     def _reset(self, dummy: bool = True):
         assert _dev is not None
         if not _dev.spi_init(
@@ -524,6 +530,7 @@ class CH347_SPIInterfaceBuilder(BaseInterfaceBuilder):
         self._enable_cs = enable_cs
         self._cs_high = cs_high
         self._auto_reset = auto_reset
+        super().__init__()
 
     def build(self, mode: int, speed_hz: int) -> CH347_SPIInterface:
         _open_dev()
@@ -570,9 +577,10 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
             raise InterfaceNotFoundError(f"Pin {pin_name} not found")
         return pin_name
 
-    def get_available_pins(self) -> Dict[str, List[GpioModes_T]]:
+    def get_available_pinmodes(self) -> Dict[str, List[GpioModes_T]]:
         lst: Dict[str, List[GpioModes_T]] = {
             f"GPIO{i}": [
+                "none",
                 "input_no_pull",
                 "output_push_pull",
             ]
@@ -580,6 +588,7 @@ class CH347_GPIOInterface(GPIOInterfaceTemplate):
         }
         return {self._pinmap_inv.get(k, k): v for k, v in lst.items()}
 
+    @retry_if_raise
     def set_mode(self, pin_name: str, mode: GpioModes_T):
         assert _dev is not None
         pin_name = self._remap(pin_name)
@@ -643,6 +652,7 @@ class CH347_GPIOInterfaceBuilder(BaseInterfaceBuilder):
         pinmap: Optional[Dict[str, CH347AvailablePins]] = None,
     ) -> None:
         self._pinmap = pinmap
+        super().__init__()
 
     def build(self) -> CH347_GPIOInterface:
         _open_dev()

@@ -4,11 +4,11 @@ from loguru import logger
 
 from drivers.filters import kalman
 from drivers.interface import register_interface, request_interface
-from drivers.interface.utils import i2c_bus_scanner
+from drivers.interface.utils import i2c_bus_scan
 from drivers.mpu9250 import MPU9250
 
 register_interface("ch347", "i2c")
-i2c_bus_scanner()
+i2c_bus_scan()
 
 imu = MPU9250()
 if 0:
