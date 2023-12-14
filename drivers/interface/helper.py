@@ -1,4 +1,3 @@
-import warnings
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union, overload
 
 from .manager import InterfaceManager
@@ -203,12 +202,6 @@ def register_interface(
     Returns:
         Corresponding interface builder
     """
-    from multiprocessing import current_process
-
-    if current_process().name != "MainProcess":
-        warnings.warn(
-            f"Registering interface in a sub-process {current_process().name}, it's usually not what you want"
-        )
     mod = xargs.pop("specific_module", None)
     if driver_name == "cp2112":
         from .interfaces._cp2112 import (

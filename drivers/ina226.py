@@ -458,7 +458,7 @@ class _INA226MonitorMultiprocWorker(mp.Process):
         power = self.power_data[idx:]
         if not self.plt_power.mouseHovering:
             self.plt_power.setTitle(
-                f"Power: {self.strf(self.power_data[-1], 'W')} / Max: {self.strf(max(power), 'W')} / Min: {self.strf(min(power), 'W')}",
+                f"Power: {self.strf(self.power_data[-1], 'W')} Max: {self.strf(max(power), 'W')} Min: {self.strf(min(power), 'W')}",
             )
         title = f"INA226 Monitor ( Time: {self.time_data[-1]:.2f} / Sample: {len(self.time_data)}"
         if len(self.time_data) > 101:

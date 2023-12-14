@@ -1,3 +1,4 @@
+import os
 from typing import Dict, List, Literal, Optional, Union, final
 
 from loguru import logger
@@ -130,6 +131,16 @@ interface_dict: Dict[AvailableDevTypes, Optional[BaseInterfaceBuilder]] = {
 specific_interface_dict: Dict[str, BaseInterfaceBuilder] = {}
 
 
+def subprocess_check():
+    if os.environ.get("UNSAFE_SUBPROCESS_INTERFACE") != "True":
+        from multiprocessing import current_process
+
+        if current_process().name != "MainProcess":
+            raise RuntimeError(
+                f"Accessing to interface in a sub-process {current_process().name}, it's usually not what you want, set 'UNSAFE_SUBPROCESS_INTERFACE' to 'True' in os.environ to suppress this check"
+            )
+
+
 class InterfaceManager:
     """
     Interface manager for the whole system
@@ -142,6 +153,7 @@ class InterfaceManager:
         """
         Register a global interface
         """
+        subprocess_check()
         assert dev_type in interface_dict, f"Interface {dev_type} not supported"
         assert (
             interface_dict[dev_type] is None
@@ -158,6 +170,7 @@ class InterfaceManager:
         """
         Register a specific interface
         """
+        subprocess_check()
 
         def register(dev_type, module_name, interface):
             module_name = module_name.lower()
@@ -183,6 +196,7 @@ class InterfaceManager:
         """
         Unregister a global interface
         """
+        subprocess_check()
         assert dev_type in interface_dict, f"Interface {dev_type} not supported"
         if interface_dict[dev_type] is not None:
             interface_dict[dev_type] = None
@@ -196,6 +210,7 @@ class InterfaceManager:
         """
         Unregister a specific interface
         """
+        subprocess_check()
 
         def unregister(dev_type, module_name):
             module_name = module_name.lower()
@@ -214,6 +229,7 @@ class InterfaceManager:
 
     @staticmethod
     def request_interface(dev_type, module_name, *args, **xargs) -> AvailableTemplates:
+        subprocess_check()
         module_name = module_name.lower()
         _fullname = f"{dev_type}_{module_name}"
         if _fullname in specific_interface_dict:
